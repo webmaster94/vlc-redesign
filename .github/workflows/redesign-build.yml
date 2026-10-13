@@ -55,7 +55,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r1-source.tar.xz
           cp doc/redesign/credits.txt dist/CREDITS.txt
-          sha256sum dist/*source.tar.xz >> dist/SHA256SUMS
+          (cd dist && sha256sum *source.tar.xz) >> dist/SHA256SUMS
       - name: Keep installer and portable player
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
