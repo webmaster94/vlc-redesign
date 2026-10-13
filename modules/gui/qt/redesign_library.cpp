@@ -108,7 +108,9 @@ void RedesignShell::pollMetadata()
         data["art"] = meta(item, vlc_meta_ArtworkURL);
         data["duration"] = qlonglong(qMax<qint64>(0, input_item_GetDuration(item) / CLOCK_FREQ));
         metadata[path] = data;
-        getSettings()->setValue("Redesign/metadata/" + fingerprint(path), data);
+        if (data.value("duration").toLongLong() > 0 || !data.value("title").toString().isEmpty() ||
+            !data.value("artist").toString().isEmpty() || !data.value("album").toString().isEmpty())
+            getSettings()->setValue("Redesign/metadata/" + fingerprint(path), data);
         metadataRequests.remove(path);
         metadataStarted.remove(path);
         input_item_Release(item);
@@ -188,6 +190,7 @@ void RedesignShell::renderHome()
         list->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         list->setObjectName("homeMedia");
+        list->setItemDelegate(Reframe::mediaDelegate(list));
         for (const auto &path : group.second)
         {
             QString title = QFileInfo(path).fileName();
@@ -209,6 +212,20 @@ void RedesignShell::renderHome()
                 icon = QIcon(QUrl(metadata.value(path).value("art").toString()).toLocalFile());
             auto item = new QListWidgetItem(icon, title.isEmpty() ? path : title, list);
             item->setData(Qt::UserRole, path);
+            const QUrl uri(path);
+            const QString local = uri.isLocalFile() ? uri.toLocalFile() : path;
+            const auto data = metadata.value(local);
+            item->setData(Qt::UserRole + 1, QFileInfo(thumbnails.value(local)).size() > 0 ||
+                                                QUrl(data.value("art").toString()).isLocalFile());
+            item->setData(Qt::UserRole + 2,
+                          getSettings()
+                              ->value("Redesign/resume/" + QUrl::fromLocalFile(local).toString())
+                              .toMap()
+                              .value("position"));
+            item->setData(Qt::UserRole + 3, data.value("artist"));
+            item->setData(Qt::UserRole + 4, data.value("duration"));
+            if (QFileInfo(local).isFile())
+                requestMetadata(local);
             item->setToolTip(path);
         }
         connect(list, &QListWidget::itemDoubleClicked, this,
@@ -314,7 +331,9 @@ void RedesignShell::mediaProperties(const QString &path)
                 for (auto it = edits->begin(); it != edits->end(); ++it)
                     data[it.key()] = it.value()->text();
                 metadata[path] = data;
-                getSettings()->setValue("Redesign/metadata/" + fingerprint(path), data);
+                if (data.value("duration").toLongLong() > 0 || !data.value("title").toString().isEmpty() ||
+                    !data.value("artist").toString().isEmpty() || !data.value("album").toString().isEmpty())
+                    getSettings()->setValue("Redesign/metadata/" + fingerprint(path), data);
                 dialog->close();
                 refresh();
             });

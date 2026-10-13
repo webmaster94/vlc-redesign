@@ -11,6 +11,7 @@
 #include <QHash>
 #include <QQueue>
 #include <QVariant>
+#include <functional>
 
 class MainInterface;
 class QListWidget;
@@ -98,6 +99,7 @@ class RedesignShell : public QWidget
     QVBoxLayout *videoLayout;
     QBoxLayout *transportLayout;
     QTimer *chromeTimer;
+    QTimer *videoClickTimer;
     bool remainingTime;
     bool customizing;
     int sortMode;
@@ -128,6 +130,7 @@ class RedesignShell : public QWidget
     void toggleLibraryDock();
     void layoutControls();
     void updateQueue();
+    void runFlowSmoke(const QString &, std::function<void(const QString &)>);
     void checkUpdates();
     void applyMediaBindings();
     void requestMetadata(const QString &);

@@ -10,8 +10,10 @@
 #include <QIcon>
 #include <QToolButton>
 
+class QAbstractItemDelegate;
 namespace Reframe
 {
+QAbstractItemDelegate *mediaDelegate(QObject *);
 QIcon icon(const QString &, const QColor & = QColor("#8f8f8f"));
 QEasingCurve transitionCurve();
 QEasingCurve springCurve();

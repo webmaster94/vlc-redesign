@@ -167,7 +167,7 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
              THEDP, &DialogsProvider::destroyPopupMenu );
 
     createMainWidget( settings );
-    bgWidget->setWithArt( false );
+    bgWidget->setWithArt( var_InheritBool( p_intf, "qt-bgcone" ) );
     redesignShell = new RedesignShell( p_intf, this, takeCentralWidget() );
     setCentralWidget( redesignShell );
     delete fullscreenControls;
@@ -266,7 +266,10 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
     if( settings->value( "MainWindow/playlist-visible", false ).toBool() )
         togglePlaylist();
 
-    QVLCTools::restoreWidgetPosition( settings, this, QSize(1280, 760) );
+    if( settings->value("Redesign/rememberWindow", true).toBool() )
+        QVLCTools::restoreWidgetPosition( settings, this, QSize(1280, 760) );
+    else
+        resize(1280, 760);
 
     b_interfaceFullScreen = isFullScreen();
 
@@ -330,7 +333,8 @@ MainInterface::~MainInterface()
     settings->endGroup();
 
     /* Save this size */
-    QVLCTools::saveWidgetPosition(settings, this);
+    if( settings->value("Redesign/rememberWindow", true).toBool() )
+        QVLCTools::saveWidgetPosition(settings, this);
 
     /* Unregister callbacks */
     var_DelCallback( p_intf->obj.libvlc, "intf-boss", IntfBossCB, p_intf );
@@ -382,6 +386,11 @@ void MainInterface::reloadPrefs()
 {
     i_notificationSetting = var_InheritInteger( p_intf, "qt-notification" );
     b_pauseOnMinimize = var_InheritBool( p_intf, "qt-pause-minimized" );
+    if( bgWidget )
+    {
+        bgWidget->setWithArt( var_InheritBool( p_intf, "qt-bgcone" ) );
+        bgWidget->update();
+    }
     if( !var_InheritBool( p_intf, "qt-fs-controller" ) && fullscreenControls )
     {
         delete fullscreenControls;
@@ -1164,7 +1173,8 @@ void MainInterface::dockPlaylist( bool p_docked )
  */
 void MainInterface::displayNormalView()
 {
-    if( redesignShell ) redesignShell->setMinimal( true );
+    if( redesignShell ) redesignShell->setMinimal(
+        getSettings()->value("Redesign/autoHideControls", "In fullscreen only").toString() != "Never" );
     menuBar()->setVisible( false );
     controls->setVisible( false );
 #ifndef QT_NO_STATUSBAR
@@ -1514,8 +1524,9 @@ void MainInterface::updateSystrayTooltipName( const QString& name )
         if( ( i_notificationSetting == NOTIFICATION_ALWAYS ) ||
             ( i_notificationSetting == NOTIFICATION_MINIMIZED && (isMinimized() || isHidden()) ) )
         {
-            sysTray->showMessage( qtr( "VLC media player" ), name,
-                    QSystemTrayIcon::NoIcon, 3000 );
+            sysTray->showMessage( "Reframe", name,
+                    QSystemTrayIcon::NoIcon,
+                    getSettings()->value("Redesign/notificationDuration", 3).toInt() * 1000 );
         }
     }
 
@@ -1736,6 +1747,14 @@ void MainInterface::handleKeyPress( QKeyEvent *e )
 void MainInterface::wheelEvent( QWheelEvent *e )
 {
     int i_vlckey = qtWheelEventToVLCKey( e );
+    if( getSettings()->value("Redesign/reverseScroll", false).toBool() )
+    {
+        const int key = i_vlckey & ~KEY_MODIFIER;
+        if( key == KEY_MOUSEWHEELUP ) i_vlckey = (i_vlckey & KEY_MODIFIER) | KEY_MOUSEWHEELDOWN;
+        else if( key == KEY_MOUSEWHEELDOWN ) i_vlckey = (i_vlckey & KEY_MODIFIER) | KEY_MOUSEWHEELUP;
+        else if( key == KEY_MOUSEWHEELLEFT ) i_vlckey = (i_vlckey & KEY_MODIFIER) | KEY_MOUSEWHEELRIGHT;
+        else if( key == KEY_MOUSEWHEELRIGHT ) i_vlckey = (i_vlckey & KEY_MODIFIER) | KEY_MOUSEWHEELLEFT;
+    }
     var_SetInteger( p_intf->obj.libvlc, "key-pressed", i_vlckey );
     e->accept();
 }

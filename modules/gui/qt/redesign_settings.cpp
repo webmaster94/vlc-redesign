@@ -307,6 +307,9 @@ RedesignPreferences::~RedesignPreferences()
 void RedesignPreferences::selectPage(int page)
 {
     navigation->setCurrentRow(qBound(0, page, pages->count() - 1));
+    if (local)
+        for (auto button : findChildren<QPushButton *>("mediaTab"))
+            button->setChecked(button->text() == categories().value(page));
 }
 int RedesignPreferences::currentPage() const
 {
@@ -404,6 +407,12 @@ void RedesignPreferences::restore(const QVariantMap &values)
 
 QVariant RedesignPreferences::read(const QString &key) const
 {
+    if (key == "ui:singleClick")
+        return getSettings()->value("Redesign/singleClick", "Play / Pause");
+    if (key == "ui:doubleClick")
+        return getSettings()->value("Redesign/doubleClick", "Toggle fullscreen");
+    if (key == "ui:autoHideControls")
+        return getSettings()->value("Redesign/autoHideControls", "In fullscreen only");
     if (key.startsWith("ui:"))
         return getSettings()->value(
             "Redesign/" + key.mid(3),
@@ -640,6 +649,9 @@ void RedesignPreferences::write(const QString &key, const QVariant &value)
     set(VLC_OBJECT(p_intf), key, value);
     if (key == "video-on-top")
         window->setInterfaceAlwaysOnTop(value.toBool());
+    if (key == "qt-max-volume")
+        if (auto volume = window->findChild<QSlider *>("volumeSlider"))
+            volume->setMaximum(qMax(1, value.toInt()));
     if (key.startsWith("qt-") || key == "video-deco")
         window->reloadPrefs();
     if (QStringList({"brightness", "contrast", "hue", "saturation", "gamma"}).contains(key))
@@ -749,7 +761,19 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
     const auto value = read(key);
     const bool app = key.startsWith("ui:");
     const auto type = cfg ? (cfg->i_type & 0xF0) : app ? CONFIG_ITEM_BOOL : 0;
-    if (key.startsWith("ui:crop-") || key == "ui:startupVolume" || key == "ui:sleepMinutes")
+    if (key == "ui:autoHideControls" || key == "ui:singleClick" || key == "ui:doubleClick")
+    {
+        auto combo = new QComboBox(parent);
+        combo->addItems(key == "ui:autoHideControls"
+                            ? QStringList({"Never", "In fullscreen only", "Always"})
+                            : QStringList({"None", "Play / Pause", "Toggle fullscreen"}));
+        combo->setCurrentIndex(qMax(0, combo->findText(value.toString())));
+        connect(combo, QOverload<int>::of(&QComboBox::activated), this,
+                [this, key, combo](int) { write(key, combo->currentText()); });
+        return combo;
+    }
+    if (key.startsWith("ui:crop-") || key == "ui:startupVolume" || key == "ui:sleepMinutes" ||
+        key == "ui:notificationDuration")
     {
         auto spin = new QDoubleSpinBox(parent);
         spin->setDecimals(0);
@@ -759,6 +783,11 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
             spin->setSuffix(" %");
         if (key == "ui:sleepMinutes")
             spin->setSuffix(" min");
+        if (key == "ui:notificationDuration")
+        {
+            spin->setRange(1, 60);
+            spin->setSuffix(" s");
+        }
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
                 [this, key](double value) { write(key, value); });
         return spin;
@@ -1164,7 +1193,7 @@ QWidget *RedesignPreferences::equalizer(bool horizontal)
         auto spin = new QDoubleSpinBox;
         if (!horizontal)
         {
-            spin->setFixedWidth(62);
+            spin->setFixedWidth(54);
             QFont font = spin->font();
             font.setPixelSize(12);
             spin->setFont(font);
@@ -1736,7 +1765,8 @@ QWidget *RedesignPreferences::buildPage(int page)
             "compact mode=ui:compactOnPlayback|Auto-hide the controls=ui:autoHideControls|Hide "
             "after=mouse-hide-timeout|Show controls in fullscreen=qt-fs-controller|#Notifications and System "
             "Tray|Show a system tray icon=qt-system-tray|Start minimized to the tray=qt-start-minimized|Show "
-            "a popup when the track changes=qt-notification|#Playlist|Show the playlist as a "
+            "a popup when the track changes=qt-notification|Popup "
+            "duration=ui:notificationDuration|#Playlist|Show the playlist as a "
             "tree=playlist-tree|#Skin|Skin file=skins2-last");
         auto more = new QWidget;
         auto controls = new QVBoxLayout(more);
@@ -1754,7 +1784,12 @@ QWidget *RedesignPreferences::buildPage(int page)
                         "position=qt-continue|Never remember items matching=qt-recentplay-filter");
         auto clear = new QPushButton("Clear history now");
         layout->addWidget(clear);
-        connect(clear, &QPushButton::clicked, this, [this] { RecentsMRL::getInstance(p_intf)->clear(); });
+        connect(clear, &QPushButton::clicked, this,
+                [this]
+                {
+                    RecentsMRL::getInstance(p_intf)->clear();
+                    getSettings()->remove("Redesign/resume");
+                });
         options(layout,
                 "#Network|Fetch titles and cover art from the internet=metadata-network-access|Submit played "
                 "tracks to last.fm=ui:lastFm|Last.fm username=lastfm-username|Last.fm "
@@ -1769,7 +1804,9 @@ QWidget *RedesignPreferences::buildPage(int page)
         options(layout,
                 "#Skip Amounts|Very short skip=extrashort-jump-size|Short skip=short-jump-size|Medium "
                 "skip=medium-jump-size|Long skip=long-jump-size|#Mouse|Scroll "
-                "wheel=hotkeys-y-wheel-mode|Horizontal scroll=hotkeys-x-wheel-mode|#Remotes|Web remote "
+                "wheel=hotkeys-y-wheel-mode|Horizontal scroll=hotkeys-x-wheel-mode|Reverse scroll "
+                "direction=ui:reverseScroll|Single click on the video=ui:singleClick|Double click on the "
+                "video=ui:doubleClick|#Remotes|Web remote "
                 "control=ui:webRemote|Port=http-port");
     }
     else if (page == 4)

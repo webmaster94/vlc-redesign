@@ -107,3 +107,5 @@ jobs:
             artifacts/controls-player.png
             artifacts/controls-settings.png
             artifacts/controls.txt.page*.png
+            artifacts/controls.txt.flow*.png
+            artifacts/controls.txt

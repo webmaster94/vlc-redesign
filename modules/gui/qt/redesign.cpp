@@ -428,6 +428,31 @@ class ClickSlider : public QSlider
     }
 };
 
+class VolumeSlider : public ClickSlider
+{
+  public:
+    explicit VolumeSlider(QWidget *parent) : ClickSlider(parent) {}
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRect area = rect().adjusted(1, 8, -1, -8);
+        QPainterPath wedge;
+        wedge.moveTo(area.bottomLeft());
+        wedge.lineTo(area.topRight());
+        wedge.lineTo(area.bottomRight());
+        wedge.closeSubpath();
+        painter.fillPath(wedge, palette().base());
+        const qreal ratio = (value() - minimum()) / double(maximum() - minimum());
+        painter.setClipRect(QRect(area.left(), area.top(), qRound(area.width() * ratio), area.height()));
+        painter.fillPath(wedge, value() > 100 ? QColor("#c78c42") : QColor("#648447"));
+        painter.setClipping(false);
+        painter.setPen(QPen(palette().text().color(), 2));
+        const int x = area.left() + qRound(area.width() * ratio);
+        painter.drawLine(x, area.bottom() - qRound(area.height() * ratio), x, area.bottom());
+    }
+};
+
 class MediaDelegate : public QStyledItemDelegate
 {
   public:
@@ -468,10 +493,35 @@ class MediaDelegate : public QStyledItemDelegate
         {
             icon.paint(p, image.adjusted(65, 30, -65, -30));
         }
+        const qreal progress = i.data(Qt::UserRole + 2).toReal();
+        if (progress > 0)
+        {
+            p->setBrush(o.palette.highlight());
+            p->drawRect(QRect(image.left(), image.bottom() - 3,
+                              qRound(image.width() * qBound<qreal>(0, progress, 1)), 4));
+        }
+        const qint64 seconds = i.data(Qt::UserRole + 4).toLongLong();
+        if (seconds > 0)
+        {
+            const QString duration = QString("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QChar('0'));
+            const int width = o.fontMetrics.width(duration) + 12;
+            const QRect badge(image.right() - width - 6, image.bottom() - 26, width, 20);
+            p->setBrush(QColor(0, 0, 0, 190));
+            p->drawRoundedRect(badge, 4, 4);
+            p->setPen(Qt::white);
+            p->drawText(badge, Qt::AlignCenter, duration);
+        }
         p->setPen(o.palette.text().color());
         p->setFont(o.font);
-        p->drawText(QRect(r.left(), image.bottom() + 12, r.width(), 30), Qt::AlignTop | Qt::AlignLeft,
+        p->drawText(QRect(r.left(), image.bottom() + 10, r.width(), 24), Qt::AlignTop | Qt::AlignLeft,
                     o.fontMetrics.elidedText(i.data().toString(), Qt::ElideMiddle, r.width()));
+        const QString artist = i.data(Qt::UserRole + 3).toString();
+        if (!artist.isEmpty())
+        {
+            p->setPen(o.palette.text().color().darker(130));
+            p->drawText(QRect(r.left(), image.bottom() + 35, r.width(), 20), Qt::AlignTop | Qt::AlignLeft,
+                        o.fontMetrics.elidedText(artist, Qt::ElideRight, r.width()));
+        }
         p->restore();
     }
 };
@@ -485,6 +535,10 @@ QString clockText(qint64 seconds)
         .arg(seconds % 60, 2, 10, QChar('0'));
 }
 } // namespace
+QAbstractItemDelegate *Reframe::mediaDelegate(QObject *parent)
+{
+    return new MediaDelegate(parent);
+}
 QIcon Reframe::icon(const QString &name, const QColor &color)
 {
     return lineIcon(name, color);
@@ -754,8 +808,11 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(search, &QLineEdit::textChanged, this,
             [this](const QString &term)
             {
-                for (int i = 0; i < files->count(); ++i)
-                    files->item(i)->setHidden(!files->item(i)->text().contains(term, Qt::CaseInsensitive));
+                const auto lists = homePanel ? homePanel->findChildren<QListWidget *>("homeMedia")
+                                             : QList<QListWidget *>({files});
+                for (auto list : lists)
+                    for (int i = 0; i < list->count(); ++i)
+                        list->item(i)->setHidden(!list->item(i)->text().contains(term, Qt::CaseInsensitive));
             });
     library->addLayout(tools);
     auto musicCategories = Reframe::segmented(QStringList() << "Songs"
@@ -864,7 +921,8 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
             [this](float position, int64_t time, int length)
             {
                 const qint64 second = time / CLOCK_FREQ;
-                if (second % 5 || second == lastResumeSave || !THEMIM->currentInputItem())
+                if (!config_GetInt(p_intf, "qt-recentplay") || !config_GetInt(p_intf, "qt-continue") ||
+                    second % 5 || second == lastResumeSave || !THEMIM->currentInputItem())
                     return;
                 lastResumeSave = second;
                 char *raw = input_item_GetURI(THEMIM->currentInputItem());
@@ -891,10 +949,11 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(mute, &QToolButton::clicked, THEAM, &ActionsManager::toggleMuteAudio);
     connect(THEMIM, &MainInputManager::soundMuteChanged, this,
             [mute](bool m) { mute->setIcon(lineIcon(m ? "mute" : "volume")); });
-    volume = new ClickSlider(transport);
+    volume = new VolumeSlider(transport);
     volume->setRange(0, 125);
     volume->setFixedWidth(84);
     volume->setAccessibleName("Volume");
+    volume->setObjectName("volumeSlider");
     volume->setValue(qMax(0, qRound(playlist_VolumeGet(THEPL) * 100)));
     bar->addWidget(volume);
     connect(volume, &QSlider::valueChanged, this,
@@ -923,14 +982,18 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(sub, &QToolButton::clicked, this, [this] { openTracks(7); });
     connect(settings, &QToolButton::clicked, this, [this] { openMediaSettings(4); });
     connect(playlist, &QToolButton::clicked, this, [this] { showQueue(); });
-    bar->addWidget(new QSizeGrip(window));
+    auto grip = new QSizeGrip(transport);
+    grip->setObjectName("resizeGrip");
+    bar->addWidget(grip);
     root->addWidget(transport);
     connect(THEMIM, &MainInputManager::inputChanged, this,
             [this](bool has)
             {
+                lastResumeSave = -1;
                 if (has)
                 {
-                    showPlayer();
+                    if (!miniPlayer)
+                        showPlayer();
                     QTimer::singleShot(250, this, [this] { applyMediaBindings(); });
                 }
                 else
@@ -950,11 +1013,26 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(chromeTimer, &QTimer::timeout, this,
             [this]
             {
-                if (minimal)
+                if (minimal || getSettings()->value("Redesign/autoHideControls").toString() == "Always")
                 {
-                    header->hide();
-                    transport->hide();
+                    Reframe::animateHeight(header, false, 300);
+                    Reframe::animateHeight(transport, false, 300);
                 }
+            });
+    videoClickTimer = new QTimer(this);
+    videoClickTimer->setSingleShot(true);
+    videoClickTimer->setInterval(QApplication::doubleClickInterval());
+    connect(videoClickTimer, &QTimer::timeout, this,
+            [this]
+            {
+                if (!THEMIM->getIM()->hasInput())
+                    return;
+                const QString action =
+                    getSettings()->value("Redesign/singleClick", "Play / Pause").toString();
+                if (action == "Play / Pause")
+                    THEMIM->togglePlayPause();
+                else if (action == "Toggle fullscreen")
+                    THEAM->doAction(FULLSCREEN_ACTION);
             });
     qApp->installEventFilter(this);
     player->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -973,19 +1051,37 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(edgeTimer, &QTimer::timeout, this,
             [this]
             {
-                if (!minimal || !window->isActiveWindow() || !config_GetInt(p_intf, "qt-fs-controller"))
+                if (!window->isActiveWindow())
                     return;
                 const auto point = window->mapFromGlobal(QCursor::pos());
+                if (!minimal)
+                {
+                    if (getSettings()->value("Redesign/autoHideControls").toString() == "Always" &&
+                        isPlayerVisible() && THEMIM->getIM()->hasInput())
+                    {
+                        const QPoint previous = property("lastControlPointer").toPoint();
+                        setProperty("lastControlPointer", point);
+                        if (point != previous && rect().contains(point))
+                            showChrome();
+                        else if (!chromeTimer->isActive() && header->isVisible())
+                            chromeTimer->start(qMax(500, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
+                    }
+                    return;
+                }
+                if (!config_GetInt(p_intf, "qt-fs-controller"))
+                    return;
                 if (point.x() < 0 || point.x() > window->width())
                     return;
                 if (point.y() >= 0 && point.y() < 54)
                 {
-                    header->show();
+                    if (!header->isVisible())
+                        Reframe::animateHeight(header, true, 300);
                     chromeTimer->start(1500);
                 }
                 else if (point.y() < window->height() && point.y() > window->height() - 80)
                 {
-                    transport->show();
+                    if (!transport->isVisible())
+                        Reframe::animateHeight(transport, true, 300);
                     chromeTimer->start(1500);
                 }
             });
@@ -1686,8 +1782,19 @@ void RedesignShell::runSmoke(const QString &reportPath)
                                 if (area->isVisible() && area->horizontalScrollBar()->maximum() > 0)
                                 {
                                     *capture = nullptr;
-                                    report(
-                                        QString("FAIL: horizontal overflow on settings page %1").arg(*index));
+                                    QString detail;
+                                    for (auto child : area->widget()->findChildren<QWidget *>())
+                                        if (child->minimumSizeHint().width() > area->viewport()->width())
+                                            detail += QString("\n%1 %2 minimum %3")
+                                                          .arg(child->metaObject()->className(),
+                                                               child->objectName())
+                                                          .arg(child->minimumSizeHint().width());
+                                    report(QString("FAIL: horizontal overflow on settings page %1, viewport "
+                                                   "%2, content %3%4")
+                                               .arg(*index)
+                                               .arg(area->viewport()->width())
+                                               .arg(area->widget()->width())
+                                               .arg(detail));
                                     return;
                                 }
                             settingsDialog->grab().save(reportPath + QString(".page%1.png").arg(*index));
@@ -1706,8 +1813,7 @@ void RedesignShell::runSmoke(const QString &reportPath)
                                 static_cast<QScrollArea *>(parent)->ensureWidgetVisible(preamp, 20, 20);
                         }
                         *capture = nullptr;
-                        report("PASS: elapsed time, pause, resume, seek, redesigned queue, 13 settings "
-                               "pages, equalizer gain and filter persistence, live subtitle synchronization");
+                        runFlowSmoke(reportPath, report);
                     };
                     QTimer::singleShot(100, this, *capture);
                 });

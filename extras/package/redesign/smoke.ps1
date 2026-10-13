@@ -37,6 +37,8 @@ $controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--
 if (-not $controls.WaitForExit(60000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
 if (-not (Test-Path -LiteralPath $controlReport)) { throw 'Widget and playback integration report was not written' }
 $controlResult = Get-Content -LiteralPath $controlReport -Raw
+Copy-Item -LiteralPath $controlReport -Destination $Artifacts
+Get-ChildItem -LiteralPath $testRoot -Filter 'controls.txt.*.png' | Copy-Item -Destination $Artifacts
 if (-not $controlResult.StartsWith('PASS:')) { throw $controlResult }
 Write-Output $controlResult
 Copy-Item -LiteralPath ($controlReport + '.player.png') -Destination (Join-Path $Artifacts 'controls-player.png')
@@ -75,4 +77,4 @@ if (Test-Path 'HKLM:\Software\Reframe') { throw 'Uninstaller left its registrati
 Copy-Item -LiteralPath $preview -Destination (Join-Path $Artifacts 'preview.png')
 Write-Output 'PASS: rendering, media decode, installation, reinstallation, uninstallation, and stock VLC coexistence'
 
-Get-ChildItem -LiteralPath $testRoot -Filter 'controls.txt.page*.png' | Copy-Item -Destination $Artifacts
+Get-ChildItem -LiteralPath $testRoot -Filter 'controls.txt.*.png' | Copy-Item -Destination $Artifacts

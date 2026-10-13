@@ -9,6 +9,8 @@
 #include "redesign_settings.hpp"
 #include "main_interface.hpp"
 #include "input_manager.hpp"
+#include "components/interface_widgets.hpp"
+#include <QMouseEvent>
 #include "actions_manager.hpp"
 #include "dialogs_provider.hpp"
 #include "recents.hpp"
@@ -52,6 +54,14 @@
 #include <QProcess>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QVersionNumber>
+#include <QVariantAnimation>
+#include <QStyledItemDelegate>
+#include <QPainter>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSlider>
+#include <memory>
 #include <functional>
 #include <algorithm>
 
@@ -87,6 +97,76 @@ QStringList queuePaths(playlist_t *pl)
     visit(pl->p_playing);
     return paths;
 }
+// Reordering uses the 600 ms INOUT_CUBIC movement in the design.
+class ControlMotionDelegate : public QStyledItemDelegate
+{
+  public:
+    QHash<QString, QPoint> previous;
+    qreal progress = 1;
+    explicit ControlMotionDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        auto view = static_cast<QListWidget *>(parent());
+        auto copy = option;
+        const QString key = index.data().toString();
+        if (progress < 1 && previous.contains(key))
+        {
+            const QPoint old = view->viewport()->mapFromGlobal(previous.value(key));
+            copy.rect.moveTopLeft(old + (option.rect.topLeft() - old) * progress);
+        }
+        QStyledItemDelegate::paint(painter, copy, index);
+    }
+};
+class ControlList : public QListWidget
+{
+  public:
+    explicit ControlList(QWidget *parent) : QListWidget(parent)
+    {
+        setProperty("controlDropZone", true);
+        setItemDelegate(new ControlMotionDelegate(this));
+    }
+    void dropEvent(QDropEvent *event) override
+    {
+        const auto lists = window()->findChildren<QListWidget *>();
+        QHash<QString, QPoint> positions;
+        for (auto list : lists)
+            if (list->property("controlDropZone").toBool())
+                for (int i = 0; i < list->count(); ++i)
+                    positions[list->item(i)->text()] =
+                        list->viewport()->mapToGlobal(list->visualItemRect(list->item(i)).topLeft());
+        QListWidget::dropEvent(event);
+        // The originating view removes moved rows after dropEvent returns.
+        QTimer::singleShot(
+            0, this,
+            [lists, positions]
+            {
+                for (auto list : lists)
+                    if (list->property("controlDropZone").toBool())
+                    {
+                        for (auto old : list->findChildren<QVariantAnimation *>("controlMotion"))
+                        {
+                            old->stop();
+                            delete old;
+                        }
+                        auto delegate = static_cast<ControlMotionDelegate *>(list->itemDelegate());
+                        delegate->previous = positions;
+                        auto animation = new QVariantAnimation(list);
+                        animation->setObjectName("controlMotion");
+                        animation->setStartValue(0.);
+                        animation->setEndValue(1.);
+                        animation->setDuration(600);
+                        animation->setEasingCurve(Reframe::transitionCurve());
+                        QObject::connect(animation, &QVariantAnimation::valueChanged, list,
+                                         [list, delegate](const QVariant &value)
+                                         {
+                                             delegate->progress = value.toReal();
+                                             list->viewport()->update();
+                                         });
+                        animation->start(QAbstractAnimation::DeleteWhenStopped);
+                    }
+            });
+    }
+};
 class FileList : public QListWidget
 {
   public:
@@ -147,6 +227,11 @@ void RedesignShell::openMediaSettings(int page)
         auto preferences = dynamic_cast<RedesignPreferences *>(sidePanel);
         if (preferences)
         {
+            if (preferences->currentPage() == page && sidePanel->isVisible())
+            {
+                sidePanel->hide();
+                return;
+            }
             preferences->selectPage(page);
             sidePanel->show();
             return;
@@ -630,8 +715,8 @@ void RedesignShell::showQueue(int selected)
     timer->start();
     stack->setCurrentIndex(selected);
     bodyLayout->addWidget(sidePanel);
-    updateQueue();
     sidePanel->show();
+    updateQueue();
     Reframe::animateWidth(sidePanel, 360, 208);
 }
 bool RedesignShell::isQueueVisible() const
@@ -1218,12 +1303,17 @@ void RedesignShell::layoutControls()
         }
         if (name == "spacer")
         {
+            if (!order.contains(name))
+                continue;
             transportLayout->addStretch();
             continue;
         }
         if (name == "divider")
         {
+            if (!order.contains(name))
+                continue;
             auto line = new QLabel("|");
+            line->setProperty("customLabel", true);
             transportLayout->addWidget(line);
             continue;
         }
@@ -1331,6 +1421,8 @@ void RedesignShell::layoutControls()
         else
             widget->hide();
     }
+    if (auto grip = transport->findChild<QWidget *>("resizeGrip"))
+        transportLayout->addWidget(grip);
     transport->updateGeometry();
     populateAuxiliaryControls();
 }
@@ -1523,8 +1615,8 @@ void RedesignShell::customize()
                                                      << "artistName"
                                                      << "folderName"
                                                      << "playlistName";
-    auto selected = new QListWidget;
-    auto inventory = new QListWidget;
+    auto selected = new ControlList(dialog);
+    auto inventory = new ControlList(dialog);
     selected->setObjectName("toolbarItems");
     inventory->setObjectName("availableControls");
     for (auto list : {selected, inventory})
@@ -1546,9 +1638,9 @@ void RedesignShell::customize()
     dialog->body->addWidget(new QLabel("Player toolbar"));
     dialog->body->addWidget(selected, 1);
     auto positions = new QHBoxLayout;
-    auto left = new QListWidget;
-    auto top = new QListWidget;
-    auto second = new QListWidget;
+    auto left = new ControlList(dialog);
+    auto top = new ControlList(dialog);
+    auto second = new ControlList(dialog);
     const QList<QPair<QListWidget *, QString>> placements = {
         {left, "leftControls"}, {top, "topControls"}, {second, "toolbar2"}};
     for (const auto &slot : placements)
@@ -1579,12 +1671,15 @@ void RedesignShell::customize()
     row->addWidget(save);
     dialog->body->addLayout(row);
     connect(reset, &QPushButton::clicked, dialog,
-            [selected, inventory, available]
+            [selected, inventory, available, metadataFields, placements]
             {
+                for (const auto &slot : placements)
+                    slot.first->clear();
                 selected->clear();
                 inventory->clear();
                 selected->addItems(available.mid(0, 13));
                 inventory->addItems(available.mid(13));
+                inventory->addItems(metadataFields);
             });
     connect(cancel, &QPushButton::clicked, dialog, &QDialog::close);
     connect(save, &QPushButton::clicked, this,
@@ -1702,7 +1797,7 @@ void RedesignShell::playerMenu(const QPoint &position)
     menu.addAction("Queue", this, [this] { showQueue(); });
     menu.addAction("Record", THEAM, &ActionsManager::record);
     menu.addSeparator();
-    menu.addAction("Hide UI", this, [this] { setMinimal(!minimal); });
+    menu.addAction("Hide UI", window, &MainInterface::toggleMinimalView);
     menu.addAction("More Settings", this, [this] { openSettings(); });
     menu.addAction("Open Media", THEDP, &DialogsProvider::openFileDialog);
     menu.addAction("Quit Reframe\tCtrl+Q", THEDP, &DialogsProvider::quit);
@@ -1710,6 +1805,35 @@ void RedesignShell::playerMenu(const QPoint &position)
 }
 bool RedesignShell::eventFilter(QObject *target, QEvent *event)
 {
+    const bool videoSurface = qobject_cast<VideoWidget *>(target) || qobject_cast<BackgroundWidget *>(target);
+    if (videoSurface &&
+        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
+         event->type() == QEvent::MouseButtonDblClick))
+    {
+        auto mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() == Qt::LeftButton)
+        {
+            if (event->type() == QEvent::MouseButtonPress)
+                setProperty("videoPressPosition", mouse->globalPos());
+            else if (event->type() == QEvent::MouseButtonDblClick)
+            {
+                videoClickTimer->stop();
+                setProperty("ignoreVideoRelease", true);
+                const QString action =
+                    getSettings()->value("Redesign/doubleClick", "Toggle fullscreen").toString();
+                if (action == "Play / Pause")
+                    THEMIM->togglePlayPause();
+                else if (action == "Toggle fullscreen")
+                    THEAM->doAction(FULLSCREEN_ACTION);
+                return true;
+            }
+            else if (property("ignoreVideoRelease").toBool())
+                setProperty("ignoreVideoRelease", false);
+            else if ((mouse->globalPos() - property("videoPressPosition").toPoint()).manhattanLength() <
+                     QApplication::startDragDistance())
+                videoClickTimer->start();
+        }
+    }
     if (target == duration && event->type() == QEvent::MouseButtonRelease)
     {
         remainingTime = !remainingTime;
@@ -1720,8 +1844,10 @@ bool RedesignShell::eventFilter(QObject *target, QEvent *event)
         const auto point = window->mapFromGlobal(QCursor::pos());
         if (point.y() < 80 || point.y() > window->height() - 100)
         {
-            header->setVisible(point.y() < 80);
-            transport->setVisible(point.y() > window->height() - 100);
+            if (point.y() < 80 && !header->isVisible())
+                Reframe::animateHeight(header, true, 300);
+            if (point.y() > window->height() - 100 && !transport->isVisible())
+                Reframe::animateHeight(transport, true, 300);
             chromeTimer->start(qMax(1000, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
         }
     }
@@ -1733,31 +1859,33 @@ void RedesignShell::showChrome()
         Reframe::animateHeight(header, true, 300);
     if (!transport->isVisible())
         Reframe::animateHeight(transport, true, 300);
-    if (minimal)
+    if (minimal || getSettings()->value("Redesign/autoHideControls").toString() == "Always")
         chromeTimer->start(qMax(1000, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
 }
 void RedesignShell::checkUpdates()
 {
     auto process = new QProcess(this);
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process](int status, QProcess::ExitStatus)
+    connect(
+        process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+        [this, process](int status, QProcess::ExitStatus)
+        {
+            if (status == 0)
             {
-                if (status == 0)
+                auto data = QJsonDocument::fromJson(process->readAllStandardOutput()).object();
+                const auto tag = data.value("tag_name").toString();
+                if (QVersionNumber::compare(QVersionNumber::fromString(tag.mid(tag.startsWith('v') ? 1 : 0)),
+                                            QVersionNumber(0, 2, 0)) > 0 &&
+                    tag != getSettings()->value("Redesign/lastRelease").toString())
                 {
-                    auto data = QJsonDocument::fromJson(process->readAllStandardOutput()).object();
-                    const auto tag = data.value("tag_name").toString();
-                    if (!tag.isEmpty() &&
-                        tag != getSettings()->value("Redesign/lastRelease", "v0.1.0").toString())
-                    {
-                        getSettings()->setValue("Redesign/lastRelease", tag);
-                        if (QMessageBox::question(window, "Reframe update",
-                                                  tag + " is available. Open the release page?") ==
-                            QMessageBox::Yes)
-                            QDesktopServices::openUrl(QUrl(data.value("html_url").toString()));
-                    }
+                    getSettings()->setValue("Redesign/lastRelease", tag);
+                    if (QMessageBox::question(window, "Reframe update",
+                                              tag + " is available. Open the release page?") ==
+                        QMessageBox::Yes)
+                        QDesktopServices::openUrl(QUrl(data.value("html_url").toString()));
                 }
-                process->deleteLater();
-            });
+            }
+            process->deleteLater();
+        });
     process->start("curl.exe",
                    QStringList() << "--silent"
                                  << "--fail"
@@ -1766,4 +1894,110 @@ void RedesignShell::checkUpdates()
                                  << "--user-agent"
                                  << "Reframe"
                                  << "https://api.github.com/repos/webmaster94/vlc-redesign/releases/latest");
+}
+
+void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(const QString &)> report)
+{
+    if (auto input = THEMIM->getInput())
+        var_SetInteger(input, "state", PAUSE_S);
+    if (settingsDialog)
+        settingsDialog->hide();
+    auto step = std::make_shared<int>(0);
+    auto check = std::make_shared<std::function<void()>>();
+    auto next = std::make_shared<std::function<void()>>();
+    *next = [this, step, next, check, report, reportPath]
+    {
+        if (*step == 0)
+            openMediaSettings(4);
+        else if (*step < 4)
+            openMediaSettings(*step + 4);
+        else if (*step < 7)
+            openTracks(*step - 4 + 5);
+        else if (*step < 10)
+            showQueue(*step - 7);
+        else if (*step == 10)
+            toggleMiniPlayer();
+        else if (*step == 11)
+        {
+            showPlayer();
+            customize();
+        }
+        else if (*step == 12)
+            newPlaylist();
+        else if (*step == 13)
+            openNetwork();
+        else if (*step == 14 || *step == 15)
+            batchTracks(queuePaths(THEPL), *step - 14);
+        else if (*step == 16)
+            onboarding();
+        else if (*step == 17)
+        {
+            auto prefs = static_cast<RedesignPreferences *>(settingsDialog);
+            prefs->editShortcuts();
+        }
+        else if (*step == 18)
+            static_cast<RedesignPreferences *>(settingsDialog)->manageProfiles();
+        else
+        {
+            if (sidePanel)
+                sidePanel->hide();
+            openSettings(6);
+            if (auto preamp = settingsDialog->findChild<QSlider *>("preampSlider"))
+                for (auto scroll : settingsDialog->findChildren<QScrollArea *>())
+                    if (scroll->isVisible())
+                        scroll->ensureWidgetVisible(preamp, 20, 20);
+            settingsDialog->show();
+            *next = nullptr;
+            *check = nullptr;
+            report("PASS: elapsed time, pause, resume, seek, queue backend, 13 global settings pages, "
+                   "4 live panels, 3 track selectors, queue/chapters/bookmarks, mini player, "
+                   "customization, playlist/network/batch-track/onboarding/shortcut/profile dialogs, "
+                   "equalizer persistence and live subtitle synchronization");
+            return;
+        }
+        QTimer::singleShot(250, this, *check);
+    };
+    *check = [this, step, next, check, report, reportPath]
+    {
+        QWidget *surface = window;
+        QDialog *dialog = nullptr;
+        if (*step < 10)
+            surface = sidePanel;
+        else if (*step == 10)
+            surface = miniPlayer;
+        else
+            for (auto candidate : window->findChildren<QDialog *>())
+                if (candidate->isVisible() && candidate != settingsDialog)
+                    dialog = candidate;
+        if (dialog)
+            surface = dialog;
+        if (!surface || !surface->isVisible() || (*step > 10 && !dialog))
+        {
+            *next = nullptr;
+            *check = nullptr;
+            report(QString("FAIL: missing flow surface %1").arg(*step));
+            return;
+        }
+        for (auto scroll : surface->findChildren<QScrollArea *>())
+            if (scroll->isVisible() && scroll->horizontalScrollBar()->maximum() > 0)
+            {
+                *next = nullptr;
+                *check = nullptr;
+                report(QString("FAIL: horizontal overflow on flow %1").arg(*step));
+                return;
+            }
+        surface->grab().save(reportPath + QString(".flow%1.png").arg(*step));
+        if (*step == 10 && !miniPlayer->isAncestorOf(player))
+        {
+            *next = nullptr;
+            *check = nullptr;
+            report("FAIL: mini player did not contain the actual player");
+            return;
+        }
+        if (dialog)
+            dialog->close();
+        ++*step;
+        QTimer::singleShot(0, this, *next);
+    };
+    QTimer::singleShot(0, this, *next);
 }
