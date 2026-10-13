@@ -6,7 +6,7 @@ Unicode true
 !include x64.nsh
 
 !define PRODUCT "Reframe"
-!define VERSION "3.0.24-r1"
+!define VERSION "3.0.24-r2"
 !define REGKEY "Software\Reframe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Reframe"
 Name "${PRODUCT}"
@@ -18,7 +18,7 @@ ManifestDPIAware true
 SetCompressor /SOLID lzma
 SetOverwrite on
 BrandingText "Reframe - unofficial VLC fork"
-VIProductVersion "3.0.24.1"
+VIProductVersion "3.0.24.2"
 VIAddVersionKey /LANG=1033 "ProductName" "Reframe"
 VIAddVersionKey /LANG=1033 "FileDescription" "Reframe media player setup"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
@@ -34,7 +34,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "VideoLAN and VLC authors; fork impl
 !define MUI_FINISHPAGE_RUN "$INSTDIR\reframe.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Run Reframe"
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "${STAGE}\COPYING.txt"
+!insertmacro MUI_PAGE_LICENSE "${STAGE}\COPYING.GPL3.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES

@@ -1,5 +1,5 @@
 /* Reframe interface, adapted from Juxtopposed's VLC Redesign, CC BY 4.0.
- * Implementation copyright 2026 webmaster94. GPL-2.0-or-later.
+ * Implementation copyright 2026 webmaster94. GPL-3.0-or-later.
  * Original design and attribution: doc/redesign/licensing.md. */
 #ifndef VLC_QT_REDESIGN_HPP
 #define VLC_QT_REDESIGN_HPP
@@ -10,6 +10,7 @@
 #include <QStringList>
 #include <QHash>
 #include <QQueue>
+#include <QVariant>
 
 class MainInterface;
 class QListWidget;
@@ -29,7 +30,7 @@ class RedesignPreferences;
 
 class RedesignShell : public QWidget
 {
-public:
+  public:
     RedesignShell(intf_thread_t *, MainInterface *, QWidget *player);
     ~RedesignShell();
     void showPlayer();
@@ -40,17 +41,21 @@ public:
     void openSettings(int page = 0);
     void showLibrary(const QString &section);
     void openMediaSettings(int page = 4);
+    void openTracks(int page = 7);
     void openNetwork();
     void customize();
     void onboarding();
     void showQueue(int tab = 0);
-    void batchTracks(const QStringList &paths = QStringList());
+    void toggleQueue();
+    bool isQueueVisible() const;
+    void showChrome();
+    void batchTracks(const QStringList &paths = QStringList(), int kind = 0);
     void newPlaylist(const QString &id = QString());
     void toggleMiniPlayer();
     void mainMenu(const QPoint &);
     void playerMenu(const QPoint &);
 
-private:
+  private:
     intf_thread_t *p_intf;
     MainInterface *window;
     QWidget *player;
@@ -97,9 +102,20 @@ private:
     int sortMode;
     QSize previousSize;
     QString currentCollection;
-    QHash<QString,QToolButton *> controlButtons;
+    QHash<QString, QToolButton *> controlButtons;
     QStringList appliedToolbar;
     QString bindingInput;
+    QWidget *homePanel;
+    QWidget *customLeft;
+    QWidget *customTop;
+    QWidget *extraToolbar;
+    QWidget *breadcrumbs;
+    QHash<QString, QVariantMap> metadata;
+    QHash<QString, input_item_t *> metadataRequests;
+    QHash<QString, qint64> metadataStarted;
+    QString musicMode;
+    QString musicGroup;
+    qint64 lastResumeSave;
 
     QToolButton *button(const QString &icon, const QString &text = QString());
     void refresh();
@@ -113,6 +129,12 @@ private:
     void updateQueue();
     void checkUpdates();
     void applyMediaBindings();
-    bool eventFilter(QObject *,QEvent *) override;
+    void requestMetadata(const QString &);
+    void pollMetadata();
+    void renderHome();
+    void refreshPins();
+    void mediaProperties(const QString &);
+    void populateAuxiliaryControls();
+    bool eventFilter(QObject *, QEvent *) override;
 };
 #endif

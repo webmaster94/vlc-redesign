@@ -54,6 +54,7 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/redesign_settings.cpp gui/qt/redesign_settings.hpp \
 	gui/qt/redesign_flows.cpp \
 	gui/qt/redesign_seek.cpp gui/qt/redesign_seek.hpp \
+	gui/qt/redesign_library.cpp \
 	gui/qt/dialogs_provider.cpp gui/qt/dialogs_provider.hpp \
 	gui/qt/input_manager.cpp gui/qt/input_manager.hpp \
 	gui/qt/actions_manager.cpp gui/qt/actions_manager.hpp \

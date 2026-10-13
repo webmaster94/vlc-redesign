@@ -1,4 +1,4 @@
-/* Copyright 2026 webmaster94. GPL-2.0-or-later. */
+/* Copyright 2026 webmaster94. GPL-3.0-or-later. */
 #ifndef VLC_REDESIGN_SEEK_HPP
 #define VLC_REDESIGN_SEEK_HPP
 #include "qt.hpp"
@@ -7,7 +7,8 @@
 #include <QVector>
 class QProcess;
 class QLabel;
-class RedesignSeek : public QSlider {
+class RedesignSeek : public QSlider
+{
     intf_thread_t *p_intf;
     QTimer debounce;
     QWidget *preview;
@@ -22,20 +23,26 @@ class RedesignSeek : public QSlider {
     bool draggingSubtitles;
     QPoint dragStart;
     qint64 originalDelay;
-    struct Cue {double from,to;QString text;};
+    struct Cue
+    {
+        double from, to;
+        QString text;
+    };
     QVector<Cue> cues;
     QVector<float> waveform;
     void loadCues();
     void thumbnail();
     void decodeWaveform();
-protected:
+
+  protected:
     void paintEvent(QPaintEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
     void leaveEvent(QEvent *) override;
-public:
-    RedesignSeek(intf_thread_t *,QWidget *);
+
+  public:
+    RedesignSeek(intf_thread_t *, QWidget *);
     ~RedesignSeek();
     void refreshMedia();
 };

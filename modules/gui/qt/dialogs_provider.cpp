@@ -36,6 +36,7 @@
 #include "util/qt_dirs.hpp"
 #include "util/customwidgets.hpp" /* VLCKeyToString() */
 #include "main_interface.hpp"
+#include "redesign.hpp"
 
 /* The dialogs */
 #include "dialogs/playlist.hpp"
@@ -249,12 +250,14 @@ void DialogsProvider::playlistDialog()
 
 void DialogsProvider::prefsDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->openSettings();return;}
     PrefsDialog *p = new PrefsDialog( (QWidget *)p_intf->p_sys->p_mi, p_intf );
     p->toggleVisible();
 }
 
 void DialogsProvider::extendedDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->openMediaSettings(6);return;}
     ExtendedDialog *extDialog = ExtendedDialog::getInstance(p_intf );
 
     if( !extDialog->isVisible() || /* Hidden */
@@ -266,6 +269,7 @@ void DialogsProvider::extendedDialog()
 
 void DialogsProvider::synchroDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->openMediaSettings(7);return;}
     ExtendedDialog *extDialog = ExtendedDialog::getInstance(p_intf );
 
     if( !extDialog->isVisible() || /* Hidden */
@@ -329,6 +333,7 @@ void DialogsProvider::mediaCodecDialog()
 
 void DialogsProvider::bookmarksDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->showQueue(2);return;}
     BookmarksDialog::getInstance( p_intf )->toggleVisible();
 }
 
@@ -339,6 +344,7 @@ void DialogsProvider::podcastConfigureDialog()
 
 void DialogsProvider::toolbarDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->customize();return;}
     ToolbarEditDialog *toolbarEditor = new ToolbarEditDialog( (QWidget *)p_intf->p_sys->p_mi, p_intf );
     if( toolbarEditor->exec() == QDialog::Accepted )
         emit toolBarConfUpdated();
@@ -456,6 +462,7 @@ void DialogsProvider::openDiscDialog()
 }
 void DialogsProvider::openNetDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->openNetwork();return;}
     openDialog( OPEN_NETWORK_TAB );
 }
 void DialogsProvider::openCaptureDialog()

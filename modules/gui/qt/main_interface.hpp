@@ -66,6 +66,7 @@ class MainInterface : public QVLCMW
     friend class PlaylistWidget;
 
 public:
+    RedesignShell *redesign() const { return redesignShell; }
     /* tors */
     MainInterface( intf_thread_t *);
     virtual ~MainInterface();

@@ -36,6 +36,7 @@ def main():
     shutil.copy2(repo / "extras/package/redesign/reframe.ico", stage / "reframe.ico")
     shutil.copy2(repo / "extras/package/redesign/reframe-branding.bmp", stage / "reframe-branding.bmp")
     shutil.copy2(repo / "COPYING.LIB", stage / "COPYING.LIB.txt")
+    shutil.copy2(repo / "COPYING.GPL3", stage / "COPYING.GPL3.txt")
     shutil.copy2(repo / "doc/redesign/credits.txt", stage / "CREDITS.txt")
     shutil.copy2(repo / "README.md", stage / "FORK-README.txt")
     shutil.copytree(repo / "extras/package/redesign/fonts", stage / "fonts")
@@ -71,12 +72,12 @@ def main():
         path = output / (name.lower() + ".nsh")
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         manifest_files[name] = path
-    installer = output / "Reframe-3.0.24-r1-win64.exe"
+    installer = output / "Reframe-3.0.24-r2-win64.exe"
     cmd = ["makensis", "-V2", f"-DSTAGE={stage}", f"-DOUTPUT_FILE={installer}"]
     cmd.extend(f"-D{name}={path}" for name, path in manifest_files.items())
     cmd.append(str(repo / "extras/package/redesign/installer.nsi"))
     subprocess.run(cmd, check=True)
-    portable = output / "Reframe-3.0.24-r1-win64-portable.zip"
+    portable = output / "Reframe-3.0.24-r2-win64-portable.zip"
     with zipfile.ZipFile(portable, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in files:
             archive.write(path, "Reframe/" + path.relative_to(stage).as_posix())

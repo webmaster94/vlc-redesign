@@ -1,9 +1,10 @@
 Reframe is an unofficial fork of VLC media player 3.0.24.
 Playback engine and upstream application: VideoLAN and VLC authors.
 Upstream: https://github.com/videolan/vlc
-VLC is licensed under GPL v2 or later. Individual libraries and files carry
+This combined Reframe release is distributed under GPL v3 or later.
+VLC's original source is GPL v2 or later. Individual libraries and files carry
 their own notices, including LGPL and compatible dependency licenses.
-See COPYING.txt, COPYING.LIB.txt and the source tree for license notices.
+See COPYING.GPL3.txt, COPYING.txt, COPYING.LIB.txt and the source tree for notices.
 
 Interface design adapted from "VLC Redesign" by Juxtopposed.
 Original: https://www.figma.com/community/file/1691465999134370980/vlc-redesign

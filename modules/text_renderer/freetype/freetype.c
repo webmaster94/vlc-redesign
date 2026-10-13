@@ -36,6 +36,8 @@
 #include <math.h>
 
 #include <vlc_common.h>
+#include <vlc_fs.h>
+#include <vlc_configuration.h>
 #include <vlc_plugin.h>
 #include <vlc_input.h>                             /* vlc_input_attachment_* */
 #include <vlc_filter.h>                                      /* filter_sys_t */
@@ -1442,6 +1444,22 @@ static int Create( vlc_object_t *p_this )
     vlc_dictionary_init( &p_sys->face_map, 50 );
     vlc_dictionary_init( &p_sys->family_map, 50 );
     vlc_dictionary_init( &p_sys->fallback_map, 20 );
+
+    /* Reframe's bundled font is private to the player, not installed in Windows. */
+    char *data_dir = config_GetDataDir();
+    char *inter_file = NULL;
+    if( data_dir && asprintf(&inter_file,"%s/fonts/Inter-Regular.ttf",data_dir) >= 0 )
+    {
+        struct stat info;
+        if( !vlc_stat(inter_file,&info) )
+        {
+            vlc_family_t *family = NewFamily(p_filter,"Inter",&p_sys->p_families,
+                                             &p_sys->family_map,"inter");
+            if(family) { NewFont(inter_file,0,false,false,family); inter_file = NULL; }
+        }
+    }
+    free(inter_file);
+    free(data_dir);
 
     p_sys->i_scale = 100;
 

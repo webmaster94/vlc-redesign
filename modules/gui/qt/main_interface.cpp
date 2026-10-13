@@ -754,6 +754,7 @@ inline void MainInterface::showTab( QWidget *widget, bool video_closing )
 
 void MainInterface::toggleFSC()
 {
+   if(redesignShell){redesignShell->showChrome();return;}
    if( !fullscreenControls ) return;
 
    IMEvent *eShow = new IMEvent( IMEvent::FullscreenControlToggle );
@@ -1068,6 +1069,7 @@ void MainInterface::createPlaylist()
 
 void MainInterface::togglePlaylist()
 {
+    if(redesignShell){redesignShell->toggleQueue();return;}
     if( redesignShell && !redesignShell->isPlayerVisible() )
     {
         redesignShell->showPlayer();

@@ -35,6 +35,7 @@
 #include <math.h>
 
 #include <vlc_common.h>
+#include <vlc_configuration.h>
 #include <vlc_plugin.h>
 #include <vlc_codec.h>
 #include <vlc_input.h>
@@ -67,6 +68,8 @@ vlc_module_begin ()
     set_subcategory( SUBCAT_INPUT_SCODEC )
     set_callbacks( Create, Destroy )
     add_string("ssa-fontsdir", NULL, TEXT_SSA_FONTSDIR, NULL, false)
+    add_bool("ass-use-embedded-style",true,N_("Use embedded ASS and SSA styles"),
+             N_("Disable to use the player's live subtitle font, size, and colors."),false)
 vlc_module_end ()
 
 /*****************************************************************************
@@ -91,6 +94,7 @@ struct decoder_sys_t
 
     /* */
     ASS_Track      *p_track;
+    vlc_object_t   *style_parent;
 };
 static void DecSysRelease( decoder_sys_t *p_sys );
 static void DecSysHold( decoder_sys_t *p_sys );
@@ -156,6 +160,7 @@ static int Create( vlc_object_t *p_this )
     p_sys->p_library  = NULL;
     p_sys->p_renderer = NULL;
     p_sys->p_track    = NULL;
+    p_sys->style_parent = vlc_object_hold(p_dec->obj.parent ? p_dec->obj.parent : VLC_OBJECT(p_dec->obj.libvlc));
 
     /* Create libass library */
     ASS_Library *p_library = p_sys->p_library = ass_library_init();
@@ -203,6 +208,15 @@ static int Create( vlc_object_t *p_this )
     free( pp_attachments );
 
     char *psz_fontsdir = var_InheritString( p_dec, "ssa-fontsdir" );
+    if(!psz_fontsdir || !*psz_fontsdir)
+    {
+        free(psz_fontsdir);
+        char *data_dir = config_GetDataDir();
+        psz_fontsdir = NULL;
+        if(data_dir && asprintf(&psz_fontsdir,"%s/fonts",data_dir) < 0)
+            psz_fontsdir = NULL;
+        free(data_dir);
+    }
     if( psz_fontsdir )
     {
         ass_set_fonts_dir( p_library, psz_fontsdir );
@@ -325,6 +339,7 @@ static void DecSysRelease( decoder_sys_t *p_sys )
         ass_renderer_done( p_sys->p_renderer );
     if( p_sys->p_library )
         ass_library_done( p_sys->p_library );
+    vlc_object_release(p_sys->style_parent);
 
     free( p_sys );
 }
@@ -455,6 +470,41 @@ static int SubpictureValidate( subpicture_t *p_subpic,
     /* */
     const vlc_tick_t i_stream_date = p_subpic->updater.p_sys->i_pts + (i_ts - p_subpic->i_start);
     int i_changed;
+    /* Reframe: keep the designer's live styling controls effective for ASS.
+     * Modification copyright 2026 webmaster94, LGPL-2.1-or-later. */
+#if LIBASS_VERSION >= 0x01500000
+    const bool embedded = var_InheritBool(p_sys->style_parent,"ass-use-embedded-style");
+    ass_set_selective_style_override_enabled(p_sys->p_renderer,embedded ? ASS_OVERRIDE_DEFAULT : ASS_OVERRIDE_FULL_STYLE);
+    if(!embedded)
+    {
+        ASS_Style style = {0};
+        char *font = var_InheritString(p_sys->style_parent,"freetype-font");
+        const int exact = var_InheritInteger(p_sys->style_parent,"freetype-fontsize");
+        const int relative = var_InheritInteger(p_sys->style_parent,"freetype-rel-fontsize");
+        const double height = fmt.i_visible_height ? fmt.i_visible_height : 720;
+        const double size = exact > 0 ? exact : height / (relative > 0 ? relative : 20);
+        style.Name = "Reframe";
+        style.FontName = font && *font ? font : "Inter";
+        style.FontSize = size * (p_sys->p_track->PlayResY > 0 ? p_sys->p_track->PlayResY : height) / height;
+        style.PrimaryColour = (var_InheritInteger(p_sys->style_parent,"freetype-color") << 8) |
+                               (255-var_InheritInteger(p_sys->style_parent,"freetype-opacity"));
+        style.SecondaryColour = style.PrimaryColour;
+        style.OutlineColour = (var_InheritInteger(p_sys->style_parent,"freetype-outline-color") << 8) |
+                               (255-var_InheritInteger(p_sys->style_parent,"freetype-outline-opacity"));
+        style.BackColour = (var_InheritInteger(p_sys->style_parent,"freetype-shadow-color") << 8) |
+                            (255-var_InheritInteger(p_sys->style_parent,"freetype-shadow-opacity"));
+        style.Bold = var_InheritBool(p_sys->style_parent,"freetype-bold");
+        style.ScaleX = 1; style.ScaleY = 1;
+        style.BorderStyle = 1;
+        style.Outline = var_InheritInteger(p_sys->style_parent,"freetype-outline-thickness") / 2.0;
+        style.Shadow = var_InheritFloat(p_sys->style_parent,"freetype-shadow-distance") * size;
+        style.Alignment = 2;
+        style.MarginL = 20; style.MarginR = 20;
+        style.MarginV = var_InheritInteger(p_sys->style_parent,"sub-margin") + 10;
+        ass_set_selective_style_override(p_sys->p_renderer,&style);
+        free(font);
+    }
+#endif
     ASS_Image *p_img = ass_render_frame( p_sys->p_renderer, p_sys->p_track,
                                          i_stream_date/1000, &i_changed );
 
