@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [redesign]
-    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'modules/text_renderer/**', 'modules/codec/libass.c', 'extras/package/redesign/**', 'src/win32/**', 'bin/**']
+    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'modules/text_renderer/**', 'modules/codec/libass.c', 'modules/visualization/**', 'extras/package/redesign/**', 'src/win32/**', 'src/audio_output/**', 'bin/**']
 
 permissions:
   contents: read
@@ -53,6 +53,8 @@ jobs:
           tar -cJf dist/Reframe-3.0.24-r2-dependency-source.tar.xz -C contrib tarballs
           python3 extras/package/redesign/collect-notices.py --archives contrib/tarballs --existing build-validation/contrib/x86_64-w64-mingw32/share/licenses --output build-validation/dependency-licenses
       - name: Build the NSIS installer
+        env:
+          OPENSUBTITLES_APP_KEY: ${{ secrets.OPENSUBTITLES_APP_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -109,3 +111,4 @@ jobs:
             artifacts/controls.txt.page*.png
             artifacts/controls.txt.flow*.png
             artifacts/controls.txt
+            artifacts/waveform.png

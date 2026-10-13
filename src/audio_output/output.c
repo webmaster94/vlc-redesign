@@ -268,6 +268,9 @@ audio_output_t *aout_New (vlc_object_t *parent)
     val.psz_string = (char *)"scope";
     text.psz_string = _("Scope");
     var_Change (aout, "visual", VLC_VAR_ADDCHOICE, &val, &text);
+    val.psz_string = (char *)"waveform";
+    text.psz_string = _("Waveform");
+    var_Change (aout, "visual", VLC_VAR_ADDCHOICE, &val, &text);
     val.psz_string = (char *)"spectrum";
     text.psz_string = _("Spectrum");
     var_Change (aout, "visual", VLC_VAR_ADDCHOICE, &val, &text);

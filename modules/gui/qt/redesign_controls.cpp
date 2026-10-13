@@ -13,6 +13,11 @@
 
 namespace Reframe
 {
+QStringList defaultToolbar()
+{
+    return QStringList({"previous", "play", "next", "stop", "elapsed", "seek", "duration", "volume",
+                        "volumeSlider", "audio", "subtitles", "settings", "playlist"});
+}
 // Figma INOUT_CUBIC is a Bezier, not Qt's polynomial InOutCubic.
 QEasingCurve transitionCurve()
 {
@@ -93,6 +98,7 @@ QWidget *fold(const QString &title, QWidget *content, QWidget *parent, bool expa
     button->setCheckable(true);
     button->setChecked(expanded);
     button->setObjectName("foldButton");
+    button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     button->setText((expanded ? "Close " : "Open ") + title +
                     QString::fromUtf8(expanded ? "  \xE2\x8C\x84" : "  \xE2\x8C\x83"));
     layout->addWidget(button);

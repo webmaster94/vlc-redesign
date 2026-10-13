@@ -4,6 +4,7 @@ Copyright 2026 webmaster94. GPL-2.0-or-later.
 No dependency binaries are downloaded by this script.
 """
 import argparse
+import os
 import hashlib
 from pathlib import Path
 import shutil
@@ -42,6 +43,8 @@ def main():
     shutil.copy2(repo / "doc/redesign/credits.txt", stage / "CREDITS.txt")
     shutil.copy2(repo / "README.md", stage / "FORK-README.txt")
     shutil.copytree(repo / "extras/package/redesign/fonts", stage / "fonts")
+    if os.environ.get("OPENSUBTITLES_APP_KEY"):
+        (stage / "opensubtitles-app-key.txt").write_text(os.environ["OPENSUBTITLES_APP_KEY"].strip(), encoding="utf-8")
     if not args.licenses.is_dir():
         parser.error("Matching dependency license directory is required")
     shutil.copytree(args.licenses, stage / "licenses")

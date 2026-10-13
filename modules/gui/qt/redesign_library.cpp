@@ -161,9 +161,23 @@ void RedesignShell::renderHome()
             streams << uri;
     }
     const auto favorites = getSettings()->value("Redesign/favorites").toStringList();
+    const auto usage = getSettings()->value("Redesign/usage").toMap();
+    auto destinations = usage.keys();
+    std::sort(destinations.begin(), destinations.end(),
+              [&usage](const QString &a, const QString &b)
+              { return usage.value(a).toInt() > usage.value(b).toInt(); });
+    destinations = destinations.mid(0, 8);
+    QStringList artists;
+    for (const auto &path : listening)
+    {
+        const QString artist = metadata.value(path).value("artist").toString();
+        if (!artist.isEmpty() && !artists.contains("artist:" + artist))
+            artists << QString("artist:" + artist);
+    }
     const QList<QPair<QString, QStringList>> groups =
         QList<QPair<QString, QStringList>>()
         << qMakePair(QString("Continue Watching"), watching) << qMakePair(QString("Listen Again"), listening)
+        << qMakePair(QString("Folders & Playlists"), destinations) << qMakePair(QString("Artists"), artists)
         << qMakePair(QString("Favorites"), favorites) << qMakePair(QString("Recent Streams"), streams);
     for (const auto &group : groups)
     {
@@ -176,7 +190,10 @@ void RedesignShell::renderHome()
                 group.first == "Continue Watching" ? "Your recent videos will appear here."
                 : group.first == "Listen Again"    ? "Your recent music will appear here."
                 : group.first == "Favorites"       ? "Favorite a file, folder, or playlist to pin it here."
-                                                   : "Your recent network streams will appear here."));
+                : group.first == "Folders & Playlists"
+                    ? "Your frequently used folders and playlists will appear here."
+                : group.first == "Artists" ? "Artists from your recent music will appear here."
+                                           : "Your recent network streams will appear here."));
             continue;
         }
         auto list = new QListWidget;
@@ -193,7 +210,9 @@ void RedesignShell::renderHome()
         list->setItemDelegate(Reframe::mediaDelegate(list));
         for (const auto &path : group.second)
         {
-            QString title = QFileInfo(path).fileName();
+            const QUrl mediaUrl(path);
+            const QString localPath = mediaUrl.isLocalFile() ? mediaUrl.toLocalFile() : path;
+            QString title = path.startsWith("artist:") ? path.mid(7) : QFileInfo(localPath).fileName();
             QIcon icon = Reframe::icon(group.first == "Listen Again"     ? "music"
                                        : group.first == "Recent Streams" ? "network"
                                                                          : "videos");
@@ -206,8 +225,8 @@ void RedesignShell::renderHome()
             }
             else if (QFileInfo(path).isDir())
                 icon = Reframe::icon("folder");
-            else if (QFileInfo(thumbnails.value(path)).size() > 0)
-                icon = QIcon(thumbnails.value(path));
+            else if (QFileInfo(thumbnails.value(localPath)).size() > 0)
+                icon = QIcon(thumbnails.value(localPath));
             else if (QUrl(metadata.value(path).value("art").toString()).isLocalFile())
                 icon = QIcon(QUrl(metadata.value(path).value("art").toString()).toLocalFile());
             auto item = new QListWidgetItem(icon, title.isEmpty() ? path : title, list);

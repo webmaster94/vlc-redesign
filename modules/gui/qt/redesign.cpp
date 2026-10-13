@@ -950,7 +950,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(THEMIM, &MainInputManager::soundMuteChanged, this,
             [mute](bool m) { mute->setIcon(lineIcon(m ? "mute" : "volume")); });
     volume = new VolumeSlider(transport);
-    volume->setRange(0, 125);
+    volume->setRange(0, qMax(1, int(config_GetInt(p_intf, "qt-max-volume"))));
     volume->setFixedWidth(84);
     volume->setAccessibleName("Volume");
     volume->setObjectName("volumeSlider");
@@ -990,6 +990,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
             [this](bool has)
             {
                 lastResumeSave = -1;
+                setProperty("audioFocusPaused", false);
                 if (has)
                 {
                     if (!miniPlayer)
@@ -1046,6 +1047,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     metadataTimer->setInterval(350);
     connect(metadataTimer, &QTimer::timeout, this, [this] { pollMetadata(); });
     metadataTimer->start();
+    startAudioFocus();
     auto edgeTimer = new QTimer(this);
     edgeTimer->setInterval(80);
     connect(edgeTimer, &QTimer::timeout, this,
@@ -1124,7 +1126,7 @@ void RedesignShell::applyTheme()
     bool light =
         theme == "Light" || (theme == "System" && systemPalette.color(QPalette::Window).lightness() > 128);
     const QString bg = light ? "#f5f5f5" : "#0e0e0e", panel = light ? "#e9e9e9" : "#191919",
-                  text = light ? "#303030" : "#b8b8b8", line = light ? "#d0d0d0" : "#292929";
+                  text = light ? "#303030" : "#8f8f8f", line = light ? "#d0d0d0" : "#292929";
     QApplication::setStyle("Fusion");
     QPalette p = systemPalette;
     p.setColor(QPalette::Window, QColor(bg));
@@ -1187,6 +1189,10 @@ void RedesignShell::applyTheme()
             "QTabBar::tab { background:%3; padding:9px 14px; } QTabBar::tab:selected { border-bottom:2px "
             "solid %5; }")
             .arg(text, bg, panel, line, accent);
+    css += "QComboBox::drop-down {border:0;width:28px;background:transparent;} "
+           "QComboBox::down-arrow {image:url(:/reframe/chevron.svg);width:12px;height:12px;} "
+           "QLabel#sectionHeading,QLabel#dialogHeading {color:" +
+           (light ? QString("#303030") : QString("#c6c6c6")) + ";}";
     qApp->setStyleSheet(css);
     for (QToolButton *b : findChildren<QToolButton *>())
     {
@@ -1550,6 +1556,28 @@ void RedesignShell::refresh()
 
 void RedesignShell::openMedia(const QString &path)
 {
+    if (path.startsWith("artist:"))
+    {
+        section = "Music";
+        musicMode = "Artists";
+        musicGroup = path.mid(7);
+        browse(getSettings()
+                   ->value("Redesign/MusicDirectory",
+                           QStandardPaths::writableLocation(QStandardPaths::MusicLocation))
+                   .toString());
+        return;
+    }
+    if (!path.startsWith("group:") && config_GetInt(p_intf, "qt-recentplay"))
+    {
+        auto usage = getSettings()->value("Redesign/usage").toMap();
+        const QUrl url = QUrl::fromUserInput(path, QString(), QUrl::AssumeLocalFile);
+        const QString destination = path.startsWith("collection:") ? path
+                                    : url.isLocalFile() ? QFileInfo(url.toLocalFile()).absolutePath()
+                                                        : QString();
+        if (!destination.isEmpty())
+            usage[destination] = usage.value(destination).toInt() + 1;
+        getSettings()->setValue("Redesign/usage", usage);
+    }
     if (path.startsWith("group:"))
     {
         musicGroup = path.mid(6);
@@ -1810,7 +1838,8 @@ void RedesignShell::runSmoke(const QString &reportPath)
                             while (parent && !qobject_cast<QScrollArea *>(parent))
                                 parent = parent->parentWidget();
                             if (parent)
-                                static_cast<QScrollArea *>(parent)->ensureWidgetVisible(preamp, 20, 20);
+                                static_cast<QScrollArea *>(parent)->ensureWidgetVisible(
+                                    settingsDialog->findChild<QWidget *>("equalizerPanel"), 20, 20);
                         }
                         *capture = nullptr;
                         runFlowSmoke(reportPath, report);

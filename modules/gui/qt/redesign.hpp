@@ -28,6 +28,7 @@ class QVBoxLayout;
 class QBoxLayout;
 class QTimer;
 class RedesignPreferences;
+class QTableWidget;
 
 class RedesignShell : public QWidget
 {
@@ -139,6 +140,8 @@ class RedesignShell : public QWidget
     void refreshPins();
     void mediaProperties(const QString &);
     void populateAuxiliaryControls();
+    void openSubtitles(QWidget *, QTableWidget *);
+    void startAudioFocus();
     bool eventFilter(QObject *, QEvent *) override;
 };
 #endif

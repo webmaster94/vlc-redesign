@@ -55,6 +55,8 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/redesign_flows.cpp \
 	gui/qt/redesign_seek.cpp gui/qt/redesign_seek.hpp \
 	gui/qt/redesign_library.cpp \
+	gui/qt/redesign_subtitles.cpp \
+	gui/qt/redesign_audiofocus.cpp \
 	gui/qt/dialogs_provider.cpp gui/qt/dialogs_provider.hpp \
 	gui/qt/input_manager.cpp gui/qt/input_manager.hpp \
 	gui/qt/actions_manager.cpp gui/qt/actions_manager.hpp \
@@ -452,6 +454,7 @@ libqt_plugin_la_RES = \
 	gui/qt/pixmaps/valid.svg \
 	gui/qt/pixmaps/search_clear.svg \
 	gui/qt/pixmaps/lock.svg
+libqt_plugin_la_RES += gui/qt/pixmaps/reframe-chevron.svg
 EXTRA_DIST += gui/qt/vlc.qrc $(libqt_plugin_la_RES)
 
 nodist_libqt_plugin_la_SOURCES += gui/qt/resources.cpp

@@ -167,6 +167,33 @@ class ControlList : public QListWidget
             });
     }
 };
+void controlItems(QListWidget *list, const QStringList &keys)
+{
+    const QHash<QString, QString> names = {{"elapsed", "Elapsed time"},
+                                           {"duration", "Duration"},
+                                           {"seek", "Seekbar"},
+                                           {"volumeSlider", "Volume slider"},
+                                           {"fileName", "File name"},
+                                           {"artistName", "Artist name"},
+                                           {"folderName", "Folder name"},
+                                           {"playlistName", "Playlist name"},
+                                           {"back10", "Back 10 seconds"},
+                                           {"back15", "Back 15 seconds"},
+                                           {"forward10", "Forward 10 seconds"},
+                                           {"forward15", "Forward 15 seconds"},
+                                           {"mini", "Mini player"},
+                                           {"frame", "Next frame"},
+                                           {"hdr", "HDR"}};
+    for (const auto &key : keys)
+    {
+        QString label = names.value(key, key);
+        if (!label.isEmpty())
+            label[0] = label[0].toUpper();
+        auto item = new QListWidgetItem(Reframe::icon(key), label, list);
+        item->setData(Qt::UserRole, key);
+        item->setToolTip(label);
+    }
+}
 class FileList : public QListWidget
 {
   public:
@@ -446,9 +473,14 @@ void RedesignShell::applyMediaBindings()
                                : QStringList();
     window->setProperty("activeSlaveInput", id);
     QVariantMap defaultsMap;
+    const auto precise = getSettings()->value("Redesign/preciseSubtitleDelay");
+    if (precise.isValid() && qint64(precise.toDouble()) == config_GetInt(p_intf, "sub-delay"))
+        defaultsMap["sub-delay"] = precise;
     const auto localKeys = window->property("reframeLocalKeys").toStringList();
     for (const auto &key : localKeys)
     {
+        if (key == "sub-delay" && defaultsMap.contains(key))
+            continue;
         auto cfg = config_FindConfig(qtu(key));
         if (!cfg)
             continue;
@@ -559,6 +591,9 @@ void RedesignShell::showQueue(int selected)
     {
         auto tabs = sidePanel->findChild<QStackedWidget *>("queueTabs");
         tabs->setCurrentIndex(selected);
+        for (auto button : sidePanel->findChild<QWidget *>("queueSelectors")->findChildren<QPushButton *>())
+            button->setChecked(button->text() ==
+                               QStringList({"Queue", "Chapters", "Bookmarks"}).value(selected));
         sidePanel->show();
         return;
     }
@@ -586,6 +621,7 @@ void RedesignShell::showQueue(int selected)
             stack->setCurrentIndex(QStringList({"Queue", "Chapters", "Bookmarks"}).indexOf(value));
             updateQueue();
         });
+    tabs->setObjectName("queueSelectors");
     auto top = new QHBoxLayout;
     top->addWidget(tabs, 1);
     top->addWidget(close);
@@ -605,6 +641,9 @@ void RedesignShell::showQueue(int selected)
         body->addWidget(list, 1);
         if (i == 0)
         {
+            auto summary = new QLabel;
+            summary->setObjectName("queueSummary");
+            body->insertWidget(0, summary);
             list->setDragDropMode(QAbstractItemView::InternalMove);
             list->setDefaultDropAction(Qt::MoveAction);
             connect(list->model(), &QAbstractItemModel::rowsMoved, list,
@@ -756,6 +795,11 @@ void RedesignShell::updateQueue()
         };
         visit(THEPL->p_playing);
     }
+    qint64 total = 0;
+    for (const auto duration : durations)
+        total += duration;
+    if (auto summary = sidePanel->findChild<QLabel *>("queueSummary"))
+        summary->setText(QString("%1 items - %2").arg(ids.size()).arg(timeText(total)));
     QString signature;
     for (int i = 0; i < ids.size(); ++i)
         signature += QString::number(ids[i]) + names[i] + QString::number(durations[i]);
@@ -960,16 +1004,16 @@ void RedesignShell::batchTracks(const QStringList &supplied, int initialKind)
         else if (QFileInfo(path).isDir())
         {
             QDir folder(path);
-            for (const auto &file : folder.entryInfoList(QStringList() << "*.mp4"
-                                                                       << "*.mkv"
-                                                                       << "*.avi"
-                                                                       << "*.webm",
-                                                         QDir::Files))
+            for (const auto &file : folder.entryInfoList(
+                     QString::fromUtf8(EXTENSIONS_MEDIA).split(';', QString::SkipEmptyParts), QDir::Files))
                 expanded << file.absoluteFilePath();
         }
         else
             expanded << path;
     }
+    for (auto &path : expanded)
+        if (QUrl(path).isLocalFile())
+            path = QUrl(path).toLocalFile();
     paths = expanded;
     auto dialog = new Reframe::Dialog(window, "Add Tracks to Playlist / Folder", QSize(1048, 800));
     auto top = new QHBoxLayout;
@@ -1047,38 +1091,44 @@ void RedesignShell::batchTracks(const QStringList &supplied, int initialKind)
                     }
                 }
             });
-    connect(origin, QOverload<int>::of(&QComboBox::activated), dialog,
-            [dialog, origin, table](int selected)
+    connect(
+        origin, QOverload<int>::of(&QComboBox::activated), dialog,
+        [this, dialog, origin, table, kind](int selected)
+        {
+            if (selected == 1)
             {
-                if (selected == 1)
-                {
-                    QDesktopServices::openUrl(QUrl("https://www.opensubtitles.com/"));
-                    origin->setCurrentIndex(0);
-                }
-                else if (selected == 2)
-                {
-                    auto input = new Reframe::Dialog(dialog, "Track Links", QSize(519, 239));
-                    auto links = new QPlainTextEdit;
-                    links->setPlaceholderText("One track URL per line");
-                    input->body->addWidget(links);
-                    auto add = new QPushButton("Assign to selected media");
-                    input->body->addWidget(add);
-                    connect(add, &QPushButton::clicked, input,
-                            [input, links, table]
-                            {
-                                int row = table->currentRow();
-                                if (row < 0)
-                                    return;
-                                QStringList tracks = links->toPlainText().split(
-                                    QRegularExpression("[\\r\\n]+"), QString::SkipEmptyParts);
-                                auto b = static_cast<QPushButton *>(table->cellWidget(row, 1));
-                                b->setProperty("tracks", tracks);
-                                b->setText(QString::number(tracks.size()) + " track(s)");
-                                input->close();
-                            });
-                    Reframe::reveal(input);
-                }
-            });
+                if (kind->currentIndex() == 0)
+                    openSubtitles(dialog, table);
+                else
+                    QMessageBox::information(
+                        dialog, "OpenSubtitles",
+                        "OpenSubtitles supplies subtitle files. Choose Computer or Link for audio tracks.");
+                origin->setCurrentIndex(0);
+            }
+            else if (selected == 2)
+            {
+                auto input = new Reframe::Dialog(dialog, "Track Links", QSize(519, 239));
+                auto links = new QPlainTextEdit;
+                links->setPlaceholderText("One track URL per line");
+                input->body->addWidget(links);
+                auto add = new QPushButton("Assign to selected media");
+                input->body->addWidget(add);
+                connect(add, &QPushButton::clicked, input,
+                        [input, links, table]
+                        {
+                            int row = table->currentRow();
+                            if (row < 0)
+                                return;
+                            QStringList tracks = links->toPlainText().split(QRegularExpression("[\\r\\n]+"),
+                                                                            QString::SkipEmptyParts);
+                            auto b = static_cast<QPushButton *>(table->cellWidget(row, 1));
+                            b->setProperty("tracks", tracks);
+                            b->setText(QString::number(tracks.size()) + " track(s)");
+                            input->close();
+                        });
+                Reframe::reveal(input);
+            }
+        });
     auto row = new QHBoxLayout;
     row->addStretch();
     auto cancel = new QPushButton("Cancel"), save = new QPushButton("Save");
@@ -1107,6 +1157,7 @@ void RedesignShell::batchTracks(const QStringList &supplied, int initialKind)
 void RedesignShell::onboarding()
 {
     auto dialog = new Reframe::Dialog(window, "Welcome to Reframe!", QSize(1090, 759));
+    dialog->setObjectName("onboardingDialog");
     auto stack = new QStackedWidget;
     dialog->body->addWidget(stack, 1);
     auto folderPage = new QWidget;
@@ -1179,6 +1230,7 @@ void RedesignShell::onboarding()
     stack->addWidget(keys);
     auto footer = new QHBoxLayout;
     auto back = new QPushButton("Back"), next = new QPushButton("Next");
+    next->setObjectName("onboardingNext");
     footer->addWidget(back);
     footer->addStretch();
     footer->addWidget(next);
@@ -1248,21 +1300,8 @@ void RedesignShell::toggleMiniPlayer()
 }
 void RedesignShell::layoutControls()
 {
-    const QStringList order = getSettings()
-                                  ->value("Redesign/toolbar", QStringList() << "previous"
-                                                                            << "play"
-                                                                            << "next"
-                                                                            << "stop"
-                                                                            << "elapsed"
-                                                                            << "seek"
-                                                                            << "duration"
-                                                                            << "volume"
-                                                                            << "volumeSlider"
-                                                                            << "audio"
-                                                                            << "subtitles"
-                                                                            << "settings"
-                                                                            << "playlist")
-                                  .toStringList();
+    const QStringList order =
+        getSettings()->value("Redesign/toolbar", Reframe::defaultToolbar()).toStringList();
     appliedToolbar = order;
     const auto auxiliary = getSettings()->value("Redesign/leftControls").toStringList() +
                            getSettings()->value("Redesign/topControls").toStringList() +
@@ -1627,14 +1666,15 @@ void RedesignShell::customize()
         list->setDefaultDropAction(Qt::MoveAction);
         list->setAcceptDrops(true);
         list->setDragEnabled(true);
-        list->setGridSize(QSize(120, 60));
+        list->setGridSize(QSize(120, 72));
+        list->setIconSize(QSize(24, 24));
     }
     const auto order =
         getSettings()->value("Redesign/toolbar", QStringList(available.mid(0, 13))).toStringList();
-    selected->addItems(order);
+    controlItems(selected, order);
     for (const auto &name : available)
         if (!order.contains(name))
-            inventory->addItem(name);
+            controlItems(inventory, QStringList({name}));
     dialog->body->addWidget(new QLabel("Player toolbar"));
     dialog->body->addWidget(selected, 1);
     auto positions = new QHBoxLayout;
@@ -1655,12 +1695,12 @@ void RedesignShell::customize()
         slot.first->setDefaultDropAction(Qt::MoveAction);
         slot.first->setAcceptDrops(true);
         slot.first->setDragEnabled(true);
-        slot.first->addItems(getSettings()->value("Redesign/" + slot.second).toStringList());
+        controlItems(slot.first, getSettings()->value("Redesign/" + slot.second).toStringList());
         box->addWidget(slot.first);
         positions->addWidget(container);
     }
     dialog->body->addLayout(positions, 1);
-    inventory->addItems(metadataFields);
+    controlItems(inventory, metadataFields);
     dialog->body->addWidget(new QLabel("Available controls"));
     dialog->body->addWidget(inventory, 1);
     auto row = new QHBoxLayout;
@@ -1677,9 +1717,9 @@ void RedesignShell::customize()
                     slot.first->clear();
                 selected->clear();
                 inventory->clear();
-                selected->addItems(available.mid(0, 13));
-                inventory->addItems(available.mid(13));
-                inventory->addItems(metadataFields);
+                controlItems(selected, available.mid(0, 13));
+                controlItems(inventory, available.mid(13));
+                controlItems(inventory, metadataFields);
             });
     connect(cancel, &QPushButton::clicked, dialog, &QDialog::close);
     connect(save, &QPushButton::clicked, this,
@@ -1687,13 +1727,13 @@ void RedesignShell::customize()
             {
                 QStringList names;
                 for (int i = 0; i < selected->count(); ++i)
-                    names << selected->item(i)->text();
+                    names << selected->item(i)->data(Qt::UserRole).toString();
                 getSettings()->setValue("Redesign/toolbar", names);
                 for (const auto &slot : placements)
                 {
                     QStringList items;
                     for (int i = 0; i < slot.first->count(); ++i)
-                        items << slot.first->item(i)->text();
+                        items << slot.first->item(i)->data(Qt::UserRole).toString();
                     getSettings()->setValue("Redesign/" + slot.second, items);
                 }
                 layoutControls();
@@ -1930,13 +1970,27 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
             batchTracks(queuePaths(THEPL), *step - 14);
         else if (*step == 16)
             onboarding();
-        else if (*step == 17)
+        else if (*step == 17 || *step == 18)
+        {
+            auto dialog = window->findChild<QDialog *>("onboardingDialog");
+            if (dialog)
+                dialog->findChild<QPushButton *>("onboardingNext")->click();
+        }
+        else if (*step == 19)
         {
             auto prefs = static_cast<RedesignPreferences *>(settingsDialog);
             prefs->editShortcuts();
         }
-        else if (*step == 18)
+        else if (*step == 20)
             static_cast<RedesignPreferences *>(settingsDialog)->manageProfiles();
+        else if (*step == 21)
+        {
+            auto bindings = new QTableWidget(1, 2, window);
+            bindings->setItem(0, 0, new QTableWidgetItem("Integration sample"));
+            bindings->setCellWidget(0, 1, new QPushButton("Choose tracks"));
+            bindings->setCurrentCell(0, 0);
+            openSubtitles(window, bindings);
+        }
         else
         {
             if (sidePanel)
@@ -1945,13 +1999,15 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
             if (auto preamp = settingsDialog->findChild<QSlider *>("preampSlider"))
                 for (auto scroll : settingsDialog->findChildren<QScrollArea *>())
                     if (scroll->isVisible())
-                        scroll->ensureWidgetVisible(preamp, 20, 20);
+                        scroll->ensureWidgetVisible(settingsDialog->findChild<QWidget *>("equalizerPanel"),
+                                                    20, 20);
             settingsDialog->show();
             *next = nullptr;
             *check = nullptr;
             report("PASS: elapsed time, pause, resume, seek, queue backend, 13 global settings pages, "
                    "4 live panels, 3 track selectors, queue/chapters/bookmarks, mini player, "
-                   "customization, playlist/network/batch-track/onboarding/shortcut/profile dialogs, "
+                   "customization, playlist/network/batch-track/3 onboarding/shortcut/profile/OpenSubtitles "
+                   "dialogs, "
                    "equalizer persistence and live subtitle synchronization");
             return;
         }
@@ -1978,12 +2034,23 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
             report(QString("FAIL: missing flow surface %1").arg(*step));
             return;
         }
+        surface->grab().save(reportPath + QString(".flow%1.png").arg(*step));
         for (auto scroll : surface->findChildren<QScrollArea *>())
             if (scroll->isVisible() && scroll->horizontalScrollBar()->maximum() > 0)
             {
                 *next = nullptr;
                 *check = nullptr;
-                report(QString("FAIL: horizontal overflow on flow %1").arg(*step));
+                QString detail;
+                for (auto child : scroll->widget()->findChildren<QWidget *>())
+                    if (child->minimumSizeHint().width() > scroll->viewport()->width())
+                        detail += QString("\n%1 %2 minimum %3")
+                                      .arg(child->metaObject()->className(), child->objectName())
+                                      .arg(child->minimumSizeHint().width());
+                report(QString("FAIL: horizontal overflow on flow %1, viewport %2, content %3%4")
+                           .arg(*step)
+                           .arg(scroll->viewport()->width())
+                           .arg(scroll->widget()->width())
+                           .arg(detail));
                 return;
             }
         surface->grab().save(reportPath + QString(".flow%1.png").arg(*step));
@@ -1994,7 +2061,7 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
             report("FAIL: mini player did not contain the actual player");
             return;
         }
-        if (dialog)
+        if (dialog && (*step < 16 || *step > 17))
             dialog->close();
         ++*step;
         QTimer::singleShot(0, this, *next);

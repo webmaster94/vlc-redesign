@@ -1,4 +1,5 @@
 <RCC>
+    <qresource prefix="/reframe"><file alias="chevron.svg">pixmaps/reframe-chevron.svg</file></qresource>
     <qresource prefix="/logo">
         <file alias="vlc256.png">../../../share/icons/256x256/vlc.png</file>
         <file alias="vlc128.png">../../../share/icons/128x128/vlc.png</file>

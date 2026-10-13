@@ -14,6 +14,7 @@ class QAbstractItemDelegate;
 namespace Reframe
 {
 QAbstractItemDelegate *mediaDelegate(QObject *);
+QStringList defaultToolbar();
 QIcon icon(const QString &, const QColor & = QColor("#8f8f8f"));
 QEasingCurve transitionCurve();
 QEasingCurve springCurve();

@@ -1,6 +1,6 @@
 # Implementation notes
 
-Checked 12 October 2026.
+Checked 13 October 2026.
 
 ## Baseline
 
@@ -14,11 +14,35 @@ Checked 12 October 2026.
 
 The [Figma Community page](https://www.figma.com/community/file/1691465999134370980/vlc-redesign) identifies Juxtopposed as the creator and displays CC BY 4.0. The initial canvas did not load. The user then supplied 25 exported PNGs and a view-only copy link. Its prototype was readable, and local raw `.fig` data was decoded for measurements and transition settings. That resolved the access issue.
 
-Implemented views include the player, folder library, recent media, playlist access, global settings, audio equalizer, subtitle synchronization, and dark/light/system themes with nine accent choices. The sidebar uses a 300 ms cubic transition measured from the prototype. Advanced VLC dialogs retain their established controls with the new palette. Media cards use real file names and locally generated thumbnails; example media artwork is not copied.
+The creator's [walkthrough](https://www.youtube.com/watch?v=ERFeOgqk324) and the decoded prototype were used to inventory panels, interactions and transitions. The former preference, effects, subtitle and toolbar dialogs are replaced by the redesign's own native panels and editors. Advanced module options are built into their settings category from VLC's configuration schema. File, disc, capture and transcoding forms retain their functionality where the supplied design specifies a menu entry without a replacement form.
+
+## Implemented coverage
+
+| Design area | Implementation |
+| --- | --- |
+| Player and chrome | Thin transport, remaining time, proximity reveal, full/UI-hidden states, configurable mouse actions and auto-hide |
+| Seek interactions | Hover thumbnails, draggable SRT/VTT timeline, cached audio waveform |
+| Live media panels | Playback, Video, Audio, Subtitles; filter controls, presets, live synchronization and font appearance |
+| Track pickers | Current embedded video/audio/subtitle choices, external tracks and actual audio-output devices |
+| Queue | Actual playlist items, drag ordering, durations and total, Chapters and Bookmarks |
+| Library | Full and compact views, folder breadcrumbs, search, sorting, grid/list, media properties and context actions |
+| Music and Home | Local metadata, Songs/Albums/Artists/Genres, cover art, continue watching, listening history, frequent destinations and pins |
+| Collections | Named, editable and exportable saved playlists; named network collections |
+| Batch tracks | Filename/episode matching, manual assignments, links, persistent audio/subtitle bindings and OpenSubtitles search/download |
+| Global preferences | Thirteen categories, search, category-local advanced controls, recording, performance and extensions |
+| Customization | Toolbar, second row, title bar and sidebar drop zones; real control and metadata items; Save, Cancel and Reset |
+| Profiles | Native settings and layout snapshots, apply, rename, delete, JSON import/export; password fields excluded |
+| First run and shortcuts | Three onboarding pages; editable normal/global hotkey table with search, Reset, Save and Cancel |
+
+Transitions use the prototype's actual easing: normalized damped springs for 208 ms expansion and 104 ms local panels, 300 ms cubic Bezier chrome movement, 600 ms customization movement and 50 ms icon hover. Entries marked instant in Figma remain instant.
+
+Windows-specific behavior includes remembered window geometry, reversed wheel directions, notification duration, native renderer discovery/selection, startup options parsed by the Windows launcher, and optional pausing when another process produces audio. Scope and Waveform are separate visualizer modes.
+
+OpenSubtitles is implemented against the official current REST contract. Publisher registration and a valid application key are external prerequisites for live service operation. The key can be supplied by the packager; user account credentials are optional for anonymous service allowances and never embedded in source. Returned file links are fetched over HTTPS without forwarding the API key or token.
 
 ## Interface approach
 
-`modules/gui/qt/redesign.cpp` adds a native shell around VLC's video widget and playlist. Transport controls connect to `InputManager`, `MainInputManager`, and `ActionsManager`; opening media uses the existing `Open` helper. The library scans selected folders and recent media, and generates thumbnails through an isolated dummy-interface VLC subprocess. The existing equalizer supplies live gain and preset controls.
+`modules/gui/qt/redesign.cpp` adds a native shell around VLC's video widget and playlist. Transport controls connect to `InputManager`, `MainInputManager`, and `ActionsManager`; opening media uses the existing `Open` helper. The library scans selected folders and recent media, and generates thumbnails through an isolated dummy-interface VLC subprocess. Native gain and preset controls use VLC's equalizer. Small changes to the FreeType and libass modules make the live subtitle controls effective during playback.
 
 The `master` branch is a development version and has a different interface architecture. Starting from a stable tag avoids making the installable fork depend on unreleased VLC changes. This choice can be revisited if the design requires library capabilities absent from 3.0.
 

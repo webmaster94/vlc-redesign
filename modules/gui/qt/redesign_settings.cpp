@@ -12,6 +12,9 @@
 #include "util/customwidgets.hpp"
 #include "dialogs_provider.hpp"
 #include "recents.hpp"
+#include "menus.hpp"
+#include <QMenu>
+#include <QActionGroup>
 #include <vlc_configuration.h>
 #include <vlc_modules.h>
 #include <vlc_plugin.h>
@@ -43,6 +46,8 @@
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QStyledItemDelegate>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QPainter>
 #include <QProcess>
 #include <QDir>
@@ -153,6 +158,7 @@ RedesignPreferences::RedesignPreferences(intf_thread_t *intf, MainInterface *mai
     filter->setPlaceholderText("Search");
     filter->setAccessibleName("Search settings");
     filter->setClearButtonEnabled(true);
+    filter->addAction(Reframe::icon("search"), QLineEdit::LeadingPosition);
     auto content = new QHBoxLayout;
     content->setContentsMargins(0, 0, 0, 0);
     content->setSpacing(24);
@@ -337,16 +343,37 @@ void RedesignPreferences::saveAppProfile(const QString &name)
         unsigned n;
         auto configs = module_config_get(modules[m], &n);
         for (unsigned i = 0; i < n; ++i)
-            if (configVisible(configs[i]))
+            if (configVisible(configs[i]) && configs[i].i_type != CONFIG_ITEM_PASSWORD)
                 settings[qfu(configs[i].psz_name)] = read(qfu(configs[i].psz_name));
         module_config_free(configs);
     }
     module_list_free(modules);
-    for (const auto &key :
-         QStringList({"theme", "accent", "toolbar", "toolbar2", "leftControls", "topControls",
-                      "compactOnPlayback", "VideosDirectory", "MusicDirectory", "autoHideControls",
-                      "seekThumbnails", "waveform", "subtitleTimeline"}))
-        settings["ui:" + key] = getSettings()->value("Redesign/" + key);
+    for (const auto &key : QStringList({"theme",
+                                        "accent",
+                                        "toolbar",
+                                        "toolbar2",
+                                        "leftControls",
+                                        "topControls",
+                                        "compactOnPlayback",
+                                        "VideosDirectory",
+                                        "MusicDirectory",
+                                        "autoHideControls",
+                                        "seekThumbnails",
+                                        "waveform",
+                                        "subtitleTimeline",
+                                        "pauseOtherAudio",
+                                        "singleClick",
+                                        "doubleClick",
+                                        "reverseScroll",
+                                        "notificationDuration",
+                                        "startupVolume",
+                                        "nightMode",
+                                        "rememberWindow",
+                                        "checkUpdates",
+                                        "extraArgs",
+                                        "useSkin",
+                                        "systemProxy"}))
+        settings["ui:" + key] = read("ui:" + key);
     settings["ui:theme"] = getSettings()->value("Redesign/theme", "Dark");
     settings["ui:accent"] = getSettings()->value("Redesign/accent", "#d37918");
     for (auto it = settings.begin(); it != settings.end();)
@@ -358,7 +385,7 @@ void RedesignPreferences::saveAppProfile(const QString &name)
     }
     getSettings()->setValue("Redesign/profiles/" + name, settings);
     auto names = getSettings()->value("Redesign/profileNames").toStringList();
-    if (!names.contains(name))
+    if (name != "Default" && !names.contains(name))
     {
         names << name;
         getSettings()->setValue("Redesign/profileNames", names);
@@ -407,10 +434,53 @@ void RedesignPreferences::restore(const QVariantMap &values)
 
 QVariant RedesignPreferences::read(const QString &key) const
 {
+    if (!local && key == "sub-delay")
+    {
+        const auto precise = getSettings()->value("Redesign/preciseSubtitleDelay");
+        if (precise.isValid() && qint64(precise.toDouble()) == config_GetInt(p_intf, "sub-delay"))
+            return precise;
+    }
+    if (key == "ui:toolbar")
+        return getSettings()->value("Redesign/toolbar", Reframe::defaultToolbar());
+    if (QStringList({"ui:toolbar2", "ui:leftControls", "ui:topControls"}).contains(key))
+        return getSettings()->value("Redesign/" + key.mid(3), QStringList());
+    if (key == "ui:VideosDirectory" || key == "ui:MusicDirectory")
+        return getSettings()->value("Redesign/" + key.mid(3),
+                                    QStandardPaths::writableLocation(key == "ui:VideosDirectory"
+                                                                         ? QStandardPaths::MoviesLocation
+                                                                         : QStandardPaths::MusicLocation));
+    if (key == "ui:extraArgs")
+    {
+        char *directory = config_GetUserDir(VLC_CONFIG_DIR);
+        QFile file(qfu(directory) + "/extra-options.txt");
+        free(directory);
+        return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
+    }
+    if (key == "ui:useSkin")
+        return cfgString(p_intf, "intf").contains("skins2");
+    if (key == "ui:systemProxy")
+        return cfgString(p_intf, "http-proxy").isEmpty();
+    if (key == "ui:visualizer")
+    {
+        auto output = THEMIM->getAout();
+        if (output)
+        {
+            char *mode = var_GetString(output, "visual");
+            const QString name = qfu(mode ? mode : "");
+            free(mode);
+            vlc_object_release(output);
+            return name;
+        }
+        return QString();
+    }
     if (key == "ui:singleClick")
         return getSettings()->value("Redesign/singleClick", "Play / Pause");
     if (key == "ui:doubleClick")
         return getSettings()->value("Redesign/doubleClick", "Toggle fullscreen");
+    if (key == "ui:notificationDuration")
+        return getSettings()->value("Redesign/notificationDuration", 3);
+    if (key == "ui:startupVolume")
+        return getSettings()->value("Redesign/startupVolume", 100);
     if (key == "ui:autoHideControls")
         return getSettings()->value("Redesign/autoHideControls", "In fullscreen only");
     if (key.startsWith("ui:"))
@@ -490,7 +560,53 @@ void RedesignPreferences::write(const QString &key, const QVariant &value)
     edited.insert(key);
     if (key.startsWith("ui:"))
     {
+        if (key == "ui:visualizer")
+        {
+            auto output = THEMIM->getAout();
+            if (output)
+            {
+                var_SetString(output, "visual", qtu(value.toString()));
+                vlc_object_release(output);
+            }
+            if (!local)
+            {
+                config_PutPsz(p_intf, "audio-visual", value.toString().isEmpty() ? "none" : "visual");
+                config_PutPsz(p_intf, "effect-list", qtu(value.toString()));
+                config_SaveConfigFile(p_intf);
+            }
+            else
+                localValues[key] = value;
+            return;
+        }
         getSettings()->setValue("Redesign/" + key.mid(3), value);
+        if (key == "ui:extraArgs")
+        {
+            char *directory = config_GetUserDir(VLC_CONFIG_DIR);
+            const QString path = qfu(directory);
+            free(directory);
+            QDir().mkpath(path);
+            QSaveFile file(path + "/extra-options.txt");
+            const QByteArray bytes = value.toString().toUtf8();
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
+                QMessageBox::warning(this, "Additional options", "The startup options could not be saved.");
+        }
+        if (key == "ui:useSkin")
+        {
+            config_PutPsz(p_intf, "intf", value.toBool() ? "skins2" : "qt");
+            config_SaveConfigFile(p_intf);
+        }
+        if (key == "ui:systemProxy")
+        {
+            if (value.toBool())
+            {
+                getSettings()->setValue("Redesign/manualProxy", cfgString(p_intf, "http-proxy"));
+                config_PutPsz(p_intf, "http-proxy", "");
+            }
+            else
+                config_PutPsz(p_intf, "http-proxy",
+                              qtu(getSettings()->value("Redesign/manualProxy").toString()));
+            config_SaveConfigFile(p_intf);
+        }
         if (key == "ui:webRemote")
         {
             if (value.toBool())
@@ -574,6 +690,8 @@ void RedesignPreferences::write(const QString &key, const QVariant &value)
     }
     else
     {
+        if (key == "sub-delay")
+            getSettings()->setValue("Redesign/preciseSubtitleDelay", value.toDouble());
         if (type == CONFIG_ITEM_STRING)
             config_PutPsz(p_intf, qtu(key), qtu(value.toString()));
         else if (type == CONFIG_ITEM_FLOAT)
@@ -728,6 +846,7 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
     {
         auto top = static_cast<QHBoxLayout *>(control->layout()->itemAt(0)->layout());
         auto text = new QLabel(label);
+        text->setWordWrap(true);
         text->setObjectName("settingLabel");
         top->insertWidget(0, text, 1);
         control->setAccessibleName(label);
@@ -752,6 +871,8 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
     if (control->objectName().isEmpty())
         control->setObjectName(key);
     control->setMaximumWidth(local ? 200 : 320);
+    if (local)
+        control->setSizePolicy(QSizePolicy::Ignored, control->sizePolicy().verticalPolicy());
     form->addWidget(control, 1);
     layout->addWidget(widget);
 }
@@ -761,6 +882,33 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
     const auto value = read(key);
     const bool app = key.startsWith("ui:");
     const auto type = cfg ? (cfg->i_type & 0xF0) : app ? CONFIG_ITEM_BOOL : 0;
+    if (key == "ui:extraArgs")
+    {
+        auto edit = new QLineEdit(value.toString(), parent);
+        edit->setMaxLength(4096);
+        edit->setPlaceholderText("e.g. --network-caching=1000");
+        edit->setToolTip("Applied on the next launch. Explicit command-line options take precedence. Use "
+                         "--ignore-config to bypass these options.");
+        connect(edit, &QLineEdit::editingFinished, this, [this, edit, key] { write(key, edit->text()); });
+        return edit;
+    }
+    if (key == "ui:visualizer")
+    {
+        auto combo = new QComboBox(parent);
+        combo->addItem("Disabled", "");
+        if (module_exists("visual"))
+        {
+            combo->addItem("Spectrometer", "spectrometer");
+            combo->addItem("Scope", "scope");
+            combo->addItem("Waveform", "waveform");
+            combo->addItem("Spectrum", "spectrum");
+            combo->addItem("VU meter", "vuMeter");
+        }
+        combo->setCurrentIndex(qMax(0, combo->findData(value)));
+        connect(combo, QOverload<int>::of(&QComboBox::activated), this,
+                [this, combo, key](int index) { write(key, combo->itemData(index)); });
+        return combo;
+    }
     if (key == "ui:autoHideControls" || key == "ui:singleClick" || key == "ui:doubleClick")
     {
         auto combo = new QComboBox(parent);
@@ -1156,6 +1304,7 @@ QWidget *RedesignPreferences::filter(const QString &label, const QString &name, 
 QWidget *RedesignPreferences::equalizer(bool horizontal)
 {
     auto content = new QWidget;
+    content->setObjectName("equalizerPanel");
     auto layout = new QVBoxLayout(content);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(20);
@@ -1298,7 +1447,23 @@ QWidget *RedesignPreferences::videoEffects()
             auto module = module_find(qtu(name));
             if (!module)
                 continue;
-            const QString title = qfu(module_get_name(module, true));
+            const QHash<QString, QString> labels = {{"adjust", "Picture"},
+                                                    {"sharpen", "Sharpen"},
+                                                    {"grain", "Grain"},
+                                                    {"antiflicker", "Anti-flicker"},
+                                                    {"colorthres", "Color threshold"},
+                                                    {"extract", "Color extraction"},
+                                                    {"transform", "Transform"},
+                                                    {"rotate", "Rotate"},
+                                                    {"magnify", "Magnify"},
+                                                    {"puzzle", "Puzzle"},
+                                                    {"logo", "Logo"},
+                                                    {"marq", "Text"},
+                                                    {"erase", "Erase"},
+                                                    {"motionblur", "Motion blur"},
+                                                    {"motiondetect", "Motion detection"},
+                                                    {"oldmovie", "Old movie"}};
+            const QString title = labels.value(name, qfu(module_get_name(module, true)));
             auto toggle = new Reframe::Toggle;
             toggle->setObjectName("videoFilter:" + name);
             char *active = var_GetString(THEPL, name == "marq" ? "sub-source" : "video-filter");
@@ -1464,23 +1629,8 @@ void RedesignPreferences::preset(QVBoxLayout *layout)
                 }
                 else
                 {
-                    size_t count;
-                    auto modules = module_list_get(&count);
-                    for (size_t m = 0; m < count; ++m)
-                    {
-                        unsigned n;
-                        auto configs = module_config_get(modules[m], &n);
-                        for (unsigned i = 0; i < n; ++i)
-                            if (configVisible(configs[i]))
-                                settings[qfu(configs[i].psz_name)] = read(qfu(configs[i].psz_name));
-                        module_config_free(configs);
-                    }
-                    module_list_free(modules);
-                    for (const auto &key :
-                         QStringList({"theme", "accent", "toolbar", "leftControls", "topControls",
-                                      "compactOnPlayback", "VideosDirectory", "MusicDirectory",
-                                      "autoHideControls", "seekThumbnails"}))
-                        settings["ui:" + key] = getSettings()->value("Redesign/" + key);
+                    saveAppProfile(name);
+                    settings = getSettings()->value("Redesign/profiles/" + name).toMap();
                 }
                 getSettings()->setValue("Redesign/profiles/" + name, settings);
                 auto names = getSettings()->value("Redesign/profileNames").toStringList();
@@ -1726,7 +1876,8 @@ QWidget *RedesignPreferences::buildPage(int page)
         auto more = new QWidget;
         auto controls = new QVBoxLayout(more);
         options(controls,
-                "Show minor warnings=verbose|Collect playback statistics=stats|Log format=logmode|Write to "
+                "Show minor warnings=verbose|Additional command line options=ui:extraArgs|Collect playback "
+                "statistics=stats|Log format=logmode|Write to "
                 "the system log=syslog|System log identity=syslog-ident|System log facility=syslog-facility");
         auto folder = new QPushButton("Open configurations folder");
         controls->addWidget(folder);
@@ -1748,6 +1899,9 @@ QWidget *RedesignPreferences::buildPage(int page)
                         config_ResetAll(p_intf);
                         config_SaveConfigFile(p_intf);
                         getSettings()->remove("Redesign");
+                        char *directory = config_GetUserDir(VLC_CONFIG_DIR);
+                        QFile::remove(qfu(directory) + "/extra-options.txt");
+                        free(directory);
                         themeChanged();
                         close();
                     }
@@ -1767,7 +1921,7 @@ QWidget *RedesignPreferences::buildPage(int page)
             "Tray|Show a system tray icon=qt-system-tray|Start minimized to the tray=qt-start-minimized|Show "
             "a popup when the track changes=qt-notification|Popup "
             "duration=ui:notificationDuration|#Playlist|Show the playlist as a "
-            "tree=playlist-tree|#Skin|Skin file=skins2-last");
+            "tree=playlist-tree|#Skin|Use a custom skin=ui:useSkin|Skin file=skins2-last");
         auto more = new QWidget;
         auto controls = new QVBoxLayout(more);
         options(controls,
@@ -1789,6 +1943,7 @@ QWidget *RedesignPreferences::buildPage(int page)
                 {
                     RecentsMRL::getInstance(p_intf)->clear();
                     getSettings()->remove("Redesign/resume");
+                    getSettings()->remove("Redesign/usage");
                 });
         options(layout,
                 "#Network|Fetch titles and cover art from the internet=metadata-network-access|Submit played "
@@ -1816,9 +1971,11 @@ QWidget *RedesignPreferences::buildPage(int page)
             local ? "#Playback|Playback speed=rate|Repeat playlist=loop|Repeat "
                     "item=repeat|Shuffle=random|Stop after each item=play-and-stop|Sleep "
                     "Timer=ui:sleepMinutes|Show Subtitle Timeline on Seekbar=ui:subtitleTimeline|Show "
-                    "Waveform on Seekbar=ui:waveform|#Tracks|Audio track=audio-track|Subtitle track=sub-track"
+                    "Waveform on Seekbar=ui:waveform|Audio Visualizer=ui:visualizer|#Tracks|Audio "
+                    "track=audio-track|Subtitle track=sub-track"
                   : "#Startup|Continue where you left off=qt-continue|Start playing as soon as a file "
-                    "opens=playlist-autostart|Default playback speed=rate|#Tracks|Preferred video "
+                    "opens=playlist-autostart|Default playback speed=rate|Pause when another app uses "
+                    "audio=ui:pauseOtherAudio|#Tracks|Preferred video "
                     "quality=preferred-resolution|Preferred menu language=menu-language|Default audio "
                     "track=audio-track|Default subtitle track=sub-track|#Order|Repeat playlist=loop|Repeat "
                     "item=repeat|Shuffle=random|Stop after each item=play-and-stop|Exit when playback "
@@ -1888,6 +2045,27 @@ QWidget *RedesignPreferences::buildPage(int page)
             "window=align|#HDR|HDR output=d3d11-hdr-mode|#Snapshots|Save to=snapshot-path|File name "
             "prefix=snapshot-prefix|Format=snapshot-format|Width=snapshot-width|Height=snapshot-height|"
             "Number files sequentially=snapshot-sequential|Show a preview after capture=snapshot-preview");
+        if (local)
+            options(layout, "Resolution=preferred-resolution");
+        if (VLCMenuBar::rendererMenu && VLCMenuBar::rendererGroup)
+        {
+            auto renderer = new QPushButton("Local");
+            renderer->setMenu(VLCMenuBar::rendererMenu);
+            auto update = [renderer](QAction *action)
+            {
+                if (action)
+                {
+                    QString text = action->text();
+                    text.remove('&');
+                    text.remove('<');
+                    text.remove('>');
+                    renderer->setText(text);
+                }
+            };
+            update(VLCMenuBar::rendererGroup->checkedAction());
+            connect(VLCMenuBar::rendererGroup, &QActionGroup::triggered, renderer, update);
+            row(layout, "Render", renderer);
+        }
         layout->addWidget(local ? videoEffects() : Reframe::fold("Video Effects", videoEffects(), content));
     }
     else if (page == 6)
@@ -1956,7 +2134,7 @@ QWidget *RedesignPreferences::buildPage(int page)
                                  "rate=sweep-rate|Feedback=feedback-gain|Wet mix=wet-mix|Dry mix=dry-mix"));
         layout->addWidget(filter("Karaoke", "karaoke", ""));
         options(layout, "#Tracks|Preferred audio language=audio-language|Audio "
-                        "delay=audio-desync|#Visualization|Visualizer=audio-visual");
+                        "delay=audio-desync|#Visualization|Visualizer=ui:visualizer");
     }
     else if (page == 7)
     {
@@ -2022,7 +2200,8 @@ QWidget *RedesignPreferences::buildPage(int page)
     else if (page == 9)
     {
         options(layout, "#Buffering|Local files=file-caching|Discs=disc-caching|Network "
-                        "streams=network-caching|Live capture=live-caching|#Proxy|HTTP proxy=http-proxy|HTTP "
+                        "streams=network-caching|Live capture=live-caching|#Proxy|System "
+                        "proxy=ui:systemProxy|HTTP proxy=http-proxy|HTTP "
                         "proxy password=http-proxy-pwd|#Security|Verify certificates against the system "
                         "trust store=gnutls-system-trust|Cipher preference=gnutls-priorities");
     }

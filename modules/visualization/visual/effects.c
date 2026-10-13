@@ -1080,9 +1080,40 @@ static int vuMeter_Run(visual_effect_t * p_effect, vlc_object_t *p_aout,
     return 0;
 }
 
+/* Reframe waveform visualization, 2026 webmaster94, LGPL-2.1-or-later.
+ * A mono waveform complements the original two-channel oscilloscope. */
+static int waveform_Run(visual_effect_t *effect, vlc_object_t *aout,
+                        const block_t *buffer, picture_t *picture)
+{
+    VLC_UNUSED(aout);
+    const unsigned channels = effect->i_nb_chans;
+    const int visible_width = __MIN(effect->i_width, picture->p[0].i_visible_pitch);
+    const int visible_height = __MIN(effect->i_height, picture->p[0].i_visible_lines);
+    if (!channels || visible_width <= 0 || visible_height < 2 || !buffer->i_nb_samples)
+        return VLC_SUCCESS;
+    const unsigned width = visible_width, height = visible_height;
+    const float *samples = (const float *)buffer->p_buffer;
+    unsigned previous = height / 2;
+    for (unsigned x = 0; x < width; ++x)
+    {
+        const size_t sample = (uint64_t)x * buffer->i_nb_samples / width;
+        float amplitude = 0;
+        for (unsigned channel = 0; channel < channels; ++channel)
+            amplitude += samples[sample * channels + channel];
+        amplitude = fmaxf(-1.f, fminf(1.f, amplitude / channels));
+        const unsigned current = __MIN(height - 1,
+            (unsigned)(height / 2 - amplitude * height * .42f));
+        for (unsigned y = __MIN(previous, current); y <= __MAX(previous, current); ++y)
+            picture->p[0].p_pixels[y * picture->p[0].i_pitch + x] = 0xd0;
+        previous = current;
+    }
+    return VLC_SUCCESS;
+}
+
 /* Table of effects */
 const struct visual_cb_t effectv[] = {
     { "scope",        scope_Run,        dummy_Free        },
+    { "waveform",     waveform_Run,     dummy_Free        },
     { "vuMeter",      vuMeter_Run,      dummy_Free        },
     { "spectrum",     spectrum_Run,     spectrum_Free     },
     { "spectrometer", spectrometer_Run, spectrometer_Free },

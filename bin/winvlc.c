@@ -42,6 +42,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <shlobj.h>
+#include <stdbool.h>
 #define HeapEnableTerminationOnCorruption (HEAP_INFORMATION_CLASS)1
 
 #ifdef HAVE_BREAKPAD
@@ -109,6 +110,55 @@ static void PrioritizeSystem32(void)
     PROCESS_MITIGATION_IMAGE_LOAD_POLICY m = { .Flags = 0 };
     m.PreferSystem32Images = 1;
     SetProcessMitigationPolicy( 10 /* ProcessImageLoadPolicy */, &m, sizeof( m ) );
+}
+
+/* Reframe additional options, 2026 webmaster94, GPL-2.0-or-later.
+ * Parse options with Windows' argument parser; never execute a shell. */
+static wchar_t **AdditionalOptions(int argc, wchar_t **argv, int *extra_count)
+{
+    *extra_count = 0;
+    for (int i = 1; i < argc; ++i)
+        if (!wcscmp(argv[i], L"--ignore-config")) return NULL;
+    wchar_t path[MAX_PATH + 48];
+    bool portable = false;
+    const DWORD path_length = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (path_length && path_length < MAX_PATH)
+    {
+        wchar_t *separator = wcsrchr(path, L'\\');
+        if (separator)
+        {
+            *separator = 0;
+            wcscat(path, L"\\portable");
+            DWORD attributes = GetFileAttributesW(path);
+            portable = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+        }
+    }
+    if (!portable)
+    {
+        if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, SHGFP_TYPE_CURRENT, path) != S_OK) return NULL;
+        wcscat(path, L"\\Reframe");
+    }
+    wcscat(path, L"\\extra-options.txt");
+    HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return NULL;
+    char bytes[16385];
+    DWORD size = GetFileSize(file, NULL), read = 0;
+    if (size == 0 || size > 16384 || !ReadFile(file, bytes, size, &read, NULL) || read != size)
+    { CloseHandle(file); return NULL; }
+    CloseHandle(file);
+    bytes[size] = 0;
+    int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, -1, NULL, 0);
+    if (!length) return NULL;
+    wchar_t *command = malloc((length + 9) * sizeof(*command));
+    if (!command) return NULL;
+    wcscpy(command, L"reframe ");
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, -1, command + 8, length);
+    wchar_t **result = CommandLineToArgvW(command, extra_count);
+    free(command);
+    if (*extra_count > 512)
+    { LocalFree(result); *extra_count = 0; return NULL; }
+    return result;
 }
 
 /*
@@ -181,13 +231,18 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
     if (wargv == NULL)
         return 1;
 
-    char *argv[argc + 3];
+    int extra_count;
+    wchar_t **extra = AdditionalOptions(argc, wargv, &extra_count);
+    char *argv[argc + extra_count + 3];
     BOOL crash_handling = TRUE;
     int j = 0;
     char *lang = NULL;
 
     argv[j++] = FromWide( L"--media-library" );
     argv[j++] = FromWide( L"--no-ignore-config" );
+    for (int i = 1; i < extra_count; ++i)
+        argv[j++] = FromWide(extra[i]);
+    LocalFree(extra);
     for (int i = 1; i < argc; i++)
     {
         if(!wcscmp(wargv[i], L"--no-crashdump"))
