@@ -1193,6 +1193,14 @@ void RedesignShell::applyTheme()
            "QComboBox::down-arrow {image:url(:/reframe/chevron.svg);width:12px;height:12px;} "
            "QLabel#sectionHeading,QLabel#dialogHeading {color:" +
            (light ? QString("#303030") : QString("#c6c6c6")) + ";}";
+    const QColor selected(accent);
+    css += QString("QSlider::sub-page:horizontal,QSlider::add-page:vertical {background:rgba(%1,%2,%3,65);} "
+                   "QAbstractScrollArea::corner {background:%4;border:0;} "
+                   "QPushButton#mediaTab {background:transparent;border-radius:0;font-size:14px;} ")
+               .arg(selected.red())
+               .arg(selected.green())
+               .arg(selected.blue())
+               .arg(bg);
     qApp->setStyleSheet(css);
     for (QToolButton *b : findChildren<QToolButton *>())
     {

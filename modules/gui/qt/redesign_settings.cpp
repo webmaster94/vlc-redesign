@@ -254,6 +254,12 @@ RedesignPreferences::RedesignPreferences(intf_thread_t *intf, MainInterface *mai
             button->setCheckable(true);
             button->setChecked(i == selected);
             button->setObjectName("mediaTab");
+            button->setIcon(Reframe::icon(i == 4   ? "play"
+                                          : i == 5 ? "videos"
+                                          : i == 6 ? "audio"
+                                                   : "subtitles"));
+            button->setIconSize(QSize(18, 18));
+            button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
             group->addButton(button);
             tabrow->addWidget(button);
             connect(button, &QPushButton::clicked, this, [this, i] { selectPage(i); });
@@ -2054,6 +2060,56 @@ QWidget *RedesignPreferences::buildPage(int page)
                     });
             timer->start();
             layout->addWidget(Reframe::fold("Statistics", stats, content));
+        }
+    }
+    else if (page == 5 && local)
+    {
+        heading(layout, "Filters");
+        layout->addWidget(videoEffects());
+        heading(layout, "Defaults");
+        options(layout, "Rotate=rotate-angle");
+        auto horizontal = new QComboBox;
+        auto vertical = new QComboBox;
+        horizontal->addItems(QStringList({"None", "Flip"}));
+        vertical->addItems(QStringList({"None", "Flip"}));
+        char *raw = var_GetString(THEPL, "video-filter");
+        const bool enabled = qfu(raw ? raw : "").split(':').contains("transform");
+        free(raw);
+        const QString mode = read("transform-type").toString();
+        horizontal->setCurrentIndex(enabled && (mode == "hflip" || mode == "180") ? 1 : 0);
+        vertical->setCurrentIndex(enabled && (mode == "vflip" || mode == "180") ? 1 : 0);
+        auto flip = [this, horizontal, vertical](int)
+        {
+            const bool h = horizontal->currentIndex(), v = vertical->currentIndex();
+            if (!h && !v)
+                filterEnabled("transform", false, true);
+            else
+                write("transform-type", h && v ? "180" : h ? "hflip" : "vflip");
+        };
+        row(layout, "Horizontal", horizontal);
+        row(layout, "Vertical", vertical);
+        connect(horizontal, QOverload<int>::of(&QComboBox::activated), this, flip);
+        connect(vertical, QOverload<int>::of(&QComboBox::activated), this, flip);
+        options(layout,
+                "Zoom=zoom|Aspect Ratio=aspect-ratio|HDR=d3d11-hdr-mode|Resolution=preferred-resolution");
+        if (VLCMenuBar::rendererMenu && VLCMenuBar::rendererGroup)
+        {
+            auto renderer = new QPushButton("Local");
+            renderer->setMenu(VLCMenuBar::rendererMenu);
+            auto update = [renderer](QAction *action)
+            {
+                if (action)
+                {
+                    QString text = action->text();
+                    text.remove('&');
+                    text.remove('<');
+                    text.remove('>');
+                    renderer->setText(text);
+                }
+            };
+            update(VLCMenuBar::rendererGroup->checkedAction());
+            connect(VLCMenuBar::rendererGroup, &QActionGroup::triggered, renderer, update);
+            row(layout, "Render", renderer);
         }
     }
     else if (page == 5)

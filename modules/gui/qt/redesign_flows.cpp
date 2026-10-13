@@ -226,8 +226,10 @@ void fileItems(QListWidget *list, const QStringList &paths)
 {
     for (const auto &path : paths)
     {
+        const QUrl url(path);
+        const QString local = url.isLocalFile() ? url.toLocalFile() : path;
         auto item = new QListWidgetItem(
-            QFileInfo(path).fileName().isEmpty() ? path : QFileInfo(path).fileName(), list);
+            QFileInfo(local).fileName().isEmpty() ? path : QFileInfo(local).fileName(), list);
         item->setData(Qt::UserRole, path);
         item->setToolTip(path);
     }
