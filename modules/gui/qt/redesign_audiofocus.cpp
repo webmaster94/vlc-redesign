@@ -11,6 +11,7 @@
 #include <vlc_input.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
