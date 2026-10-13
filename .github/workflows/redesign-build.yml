@@ -2,6 +2,9 @@ name: Windows build validation
 
 on:
   workflow_dispatch:
+  push:
+    branches: [redesign]
+    paths: [.github/workflows/redesign-build.yml]
 
 permissions:
   contents: read
