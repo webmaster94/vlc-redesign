@@ -1385,7 +1385,10 @@ void RedesignShell::refresh()
                 .split(';', QString::SkipEmptyParts);
         QDir d(currentDirectory);
         d.setNameFilters(filters);
-        d.setFilter(QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot | QDir::Readable);
+        QDir::Filters visibility = QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot | QDir::Readable;
+        if (config_GetInt(p_intf, "show-hiddenfiles"))
+            visibility |= QDir::Hidden;
+        d.setFilter(visibility);
         d.setSorting(QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
         for (const QFileInfo &f : d.entryInfoList())
             paths << f.absoluteFilePath();
@@ -1671,6 +1674,7 @@ void RedesignShell::openSettings(int selectedPage)
     if (settingsDialog)
     {
         static_cast<RedesignPreferences *>(settingsDialog)->selectPage(selectedPage);
+        settingsDialog->show();
         settingsDialog->raise();
         settingsDialog->activateWindow();
         return;

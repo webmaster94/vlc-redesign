@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [redesign]
-    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'modules/text_renderer/**', 'modules/codec/libass.c', 'modules/visualization/**', 'extras/package/redesign/**', 'src/win32/**', 'src/audio_output/**', 'bin/**']
+    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'modules/text_renderer/**', 'modules/codec/libass.c', 'modules/visualization/**', 'extras/package/redesign/**', 'extras/package/win32/build.sh', 'src/win32/**', 'src/audio_output/**', 'src/video_output/**', 'src/libvlc-module.c', 'bin/**']
 
 permissions:
   contents: read
@@ -26,7 +26,10 @@ jobs:
         run: |
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc-3.0/win64/vlc-contrib-x86_64-w64-mingw32-910cc9cada6080dd777fbafb2ebdd0c24f702c30.tar.zst"
+          contrib_name="vlc-contrib-x86_64-w64-mingw32-910cc9cada6080dd777fbafb2ebdd0c24f702c30.tar.zst"
+          curl --fail --location --retry 3 -o /tmp/reframe-contrib.tar.zst "https://github.com/webmaster94/vlc-redesign/releases/download/v0.1.0/$contrib_name"
+          echo "49f7690b3d09760f842f9f8e9612c28de8cbb1d027bcb3f6aaa25767611eea8c  /tmp/reframe-contrib.tar.zst" | sha256sum --check
+          export VLC_PREBUILT_CONTRIBS_URL="file:///tmp/reframe-contrib.tar.zst"
           mkdir -p "$GITHUB_WORKSPACE/build-validation"
           cd "$GITHUB_WORKSPACE/build-validation"
           ../extras/package/win32/build.sh -a x86_64 -p 2>&1 | tee build.log

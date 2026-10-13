@@ -132,7 +132,10 @@ void RedesignSeek::loadCues()
                 continue;
             Cue cue;
             cue.from = cueTime(times[0]);
-            cue.to = cueTime(times[1].trimmed().split(' ', QString::SkipEmptyParts).first());
+            const auto end = times[1].trimmed().split(' ', QString::SkipEmptyParts);
+            if (end.isEmpty())
+                continue;
+            cue.to = cueTime(end.first());
             cue.text = QStringList(lines.mid(i + 1)).join(' ');
             cue.text.remove(QRegularExpression("<[^>]+>"));
             cues << cue;

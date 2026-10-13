@@ -431,6 +431,10 @@ else
     PREBUILT_FAILED=yes
 fi
 make list
+if [ -n "$PREBUILT_FAILED" ] && [ "$PREBUILT" = "yes" ]; then
+    echo "Requested prebuilt dependencies could not be installed; stopping instead of rebuilding different binaries."
+    exit 1
+fi
 if [ -n "$PREBUILT_FAILED" ]; then
     make -j$JOBS fetch
     make -j$JOBS -k || make -j1

@@ -930,7 +930,10 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
         if (key == "ui:startupVolume")
             spin->setSuffix(" %");
         if (key == "ui:sleepMinutes")
+        {
             spin->setSuffix(" min");
+            spin->setSpecialValueText("Off");
+        }
         if (key == "ui:notificationDuration")
         {
             spin->setRange(1, 60);
@@ -1092,12 +1095,43 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
         auto spin = new QDoubleSpinBox(parent);
         spin->setObjectName(key == "sub-delay" ? "subtitleDelay" : key);
         const bool floating = type == CONFIG_ITEM_FLOAT;
-        const auto minimum = floating ? cfg->min.f : double(cfg->min.i);
-        const auto maximum = floating ? cfg->max.f : double(cfg->max.i);
+        const bool percent = key.endsWith("opacity") || key == "volume-step" || key == "qt-max-volume";
+        const bool seconds =
+            QStringList({"mouse-hide-timeout", "video-title-timeout", "osd-timeout"}).contains(key);
+        const double scale = seconds                   ? .001
+                             : key == "volume-step"    ? 100. / AOUT_VOLUME_DEFAULT
+                             : key.endsWith("opacity") ? (floating ? 100. : 100. / 255.)
+                                                       : 1.;
+        double minimum = (floating ? cfg->min.f : double(cfg->min.i)) * scale;
+        double maximum = (floating ? cfg->max.f : double(cfg->max.i)) * scale;
+        if (seconds && maximum <= minimum)
+        {
+            minimum = 0;
+            maximum = 10;
+        }
         spin->setDecimals(floating ? 3 : 0);
         spin->setRange(maximum > minimum ? minimum : -100000000, maximum > minimum ? maximum : 100000000);
         spin->setSingleStep(floating ? .1 : 1);
-        spin->setValue(value.toDouble());
+        spin->setValue(value.toDouble() * scale);
+        if (percent)
+        {
+            spin->setDecimals(key == "volume-step" ? 1 : 0);
+            spin->setSuffix(" %");
+        }
+        if (seconds)
+        {
+            spin->setDecimals(1);
+            spin->setSingleStep(.1);
+            spin->setSuffix(" s");
+        }
+        if (key == "rate")
+        {
+            spin->setDecimals(2);
+            spin->setSuffix("x");
+            spin->setSingleStep(.25);
+        }
+        if (key == "freetype-fontsize")
+            spin->setSpecialValueText("Auto");
         if (key == "sub-delay" || key == "audio-desync")
         {
             spin->setDecimals(3);
@@ -1117,11 +1151,15 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
             connect(THEMIM->getIM(), &InputManager::synchroChanged, spin, update);
             update();
         }
-        connect(
-            spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            [this, key](double number) {
-                write(key, key == "sub-delay" ? number * 10 : key == "audio-desync" ? number * 1000 : number);
-            });
+        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+                [this, key, scale, floating](double number)
+                {
+                    const double native = key == "sub-delay"      ? number * 10
+                                          : key == "audio-desync" ? number * 1000
+                                                                  : number / scale;
+                    write(key,
+                          !floating && key != "sub-delay" && key != "audio-desync" ? qRound(native) : native);
+                });
         if ((maximum > minimum && maximum - minimum <= 1000) || key == "sub-delay" || key == "audio-desync" ||
             key == "rate")
         {

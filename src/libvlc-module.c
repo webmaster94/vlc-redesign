@@ -1677,6 +1677,10 @@ vlc_module_begin ()
     add_bool( "spu", 1, SPU_TEXT, SPU_LONGTEXT, false )
         change_safe ()
     add_bool( "osd", 1, OSD_TEXT, OSD_LONGTEXT, false )
+    /* Reframe shortcut feedback duration, 2026 webmaster94, LGPL-2.1-or-later. */
+    add_integer( "osd-timeout", 1000, N_("On-screen feedback duration"),
+                 N_("Duration of shortcut feedback in milliseconds."), false )
+        change_integer_range( 500, 5000 )
     add_module( "text-renderer", "text renderer", NULL, TEXTRENDERER_TEXT,
                 TEXTRENDERER_LONGTEXT, true )
 
