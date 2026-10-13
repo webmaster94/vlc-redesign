@@ -1,0 +1,39 @@
+name: Windows build validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  win64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: registry.videolan.org/vlc-debian-win64-3.0:20260820114402
+      options: --user root
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Compile the Windows x64 player
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc-3.0/win64/vlc-contrib-x86_64-w64-mingw32-910cc9cada6080dd777fbafb2ebdd0c24f702c30.tar.zst"
+          mkdir -p "$GITHUB_WORKSPACE/build-validation"
+          cd "$GITHUB_WORKSPACE/build-validation"
+          ../extras/package/win32/build.sh -a x86_64 -p 2>&1 | tee build.log
+      - name: Keep build logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-x64-build-logs
+          path: |
+            build-validation/build.log
+            build-validation/win64/config.log
+          if-no-files-found: warn
+          retention-days: 14
