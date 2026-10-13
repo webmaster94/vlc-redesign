@@ -125,7 +125,7 @@ public:
     explicit MediaDelegate(QObject *p):QStyledItemDelegate(p) {}
     QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override {
         const auto view=qobject_cast<QListWidget *>(parent());
-        return QSize(220,view&&view->viewMode()==QListView::ListMode?56:162);
+        return QSize(320,view&&view->viewMode()==QListView::ListMode?56:232);
     }
     void paint(QPainter *p,const QStyleOptionViewItem &o,const QModelIndex &i) const override {
         p->save();p->setRenderHint(QPainter::Antialiasing);
@@ -133,7 +133,7 @@ public:
             QIcon icon=qvariant_cast<QIcon>(i.data(Qt::DecorationRole));icon.paint(p,QRect(o.rect.left()+8,o.rect.top()+4,70,40));
             p->setPen(o.palette.text().color());p->drawText(o.rect.adjusted(92,0,-8,0),Qt::AlignVCenter|Qt::AlignLeft,i.data().toString());p->restore();return;
         }
-        QRect r=o.rect.adjusted(8,6,-8,-6), image(r.left(),r.top(),r.width(),110);
+        QRect r=o.rect.adjusted(8,6,-8,-6), image(r.left(),r.top(),r.width(),r.width()*9/16);
         p->setPen(Qt::NoPen);p->setBrush(o.state&QStyle::State_Selected?o.palette.highlight():o.palette.alternateBase());p->drawRoundedRect(image,8,8);
         QIcon icon=qvariant_cast<QIcon>(i.data(Qt::DecorationRole));
         if(i.data(Qt::UserRole+1).toBool()) {
@@ -206,15 +206,15 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     auto back=button("back"),forward=button("forward");tools->addWidget(back);tools->addWidget(forward);
     connect(back,&QToolButton::clicked,this,[this]{if(historyPosition>0)browse(history[--historyPosition],false);});
     connect(forward,&QToolButton::clicked,this,[this]{if(historyPosition+1<history.size())browse(history[++historyPosition],false);});
-    location=new QLabel;tools->addWidget(location,1);count=new QLabel;tools->addWidget(count);
+    location=new QLabel;location->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);tools->addWidget(location,1);count=new QLabel;tools->addWidget(count);
     auto folder=button("folder");folder->setToolTip("Browse a media folder");tools->addWidget(folder);
     connect(folder,&QToolButton::clicked,this,[this]{QString d=QFileDialog::getExistingDirectory(this,"Open media folder",currentDirectory);if(!d.isEmpty()){getSettings()->setValue("Redesign/"+section+"Directory",d);browse(d);}});
     auto grid=button("grid");grid->setToolTip("Switch grid or list view");tools->addWidget(grid);
-    connect(grid,&QToolButton::clicked,this,[this,grid]{bool isGrid=files->viewMode()==QListView::IconMode;files->setViewMode(isGrid?QListView::ListMode:QListView::IconMode);files->setGridSize(isGrid?QSize(220,56):QSize(220,162));grid->setIcon(lineIcon(isGrid?"list":"grid"));});
-    search=new QLineEdit;search->setPlaceholderText("Search");search->setAccessibleName("Search media");search->setMaximumWidth(300);search->setClearButtonEnabled(true);search->addAction(lineIcon("search"),QLineEdit::LeadingPosition);tools->addWidget(search);
+    connect(grid,&QToolButton::clicked,this,[this,grid]{bool isGrid=files->viewMode()==QListView::IconMode;files->setViewMode(isGrid?QListView::ListMode:QListView::IconMode);files->setGridSize(isGrid?QSize(320,56):QSize(320,232));grid->setIcon(lineIcon(isGrid?"list":"grid"));});
+    search=new QLineEdit;search->setPlaceholderText("Search");search->setAccessibleName("Search media");search->setMinimumWidth(220);search->setMaximumWidth(300);search->setClearButtonEnabled(true);search->addAction(lineIcon("search"),QLineEdit::LeadingPosition);tools->addWidget(search);
     connect(search,&QLineEdit::textChanged,this,[this](const QString &term){for(int i=0;i<files->count();++i)files->item(i)->setHidden(!files->item(i)->text().contains(term,Qt::CaseInsensitive));});
     library->addLayout(tools);
-    files=new QListWidget(browser);files->setObjectName("mediaGrid");files->setViewMode(QListView::IconMode);files->setResizeMode(QListView::Adjust);files->setMovement(QListView::Static);files->setWrapping(true);files->setGridSize(QSize(220,162));files->setIconSize(QSize(204,110));files->setSelectionMode(QAbstractItemView::ExtendedSelection);files->setItemDelegate(new MediaDelegate(files));files->setContextMenuPolicy(Qt::CustomContextMenu);
+    files=new QListWidget(browser);files->setObjectName("mediaGrid");files->setViewMode(QListView::IconMode);files->setResizeMode(QListView::Adjust);files->setMovement(QListView::Static);files->setWrapping(true);files->setGridSize(QSize(320,232));files->setIconSize(QSize(304,171));files->setSelectionMode(QAbstractItemView::ExtendedSelection);files->setItemDelegate(new MediaDelegate(files));files->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(files,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *item){QString path=item->data(Qt::UserRole).toString();if(QFileInfo(path).isDir())browse(path);else openMedia(path);});
     connect(files,&QListWidget::customContextMenuRequested,this,&RedesignShell::contextMenu);
     library->addWidget(files,1);empty=new QLabel;empty->setAlignment(Qt::AlignCenter);empty->setWordWrap(true);empty->setObjectName("emptyState");library->addWidget(empty,1);
@@ -266,6 +266,7 @@ void RedesignShell::applyTheme()
         "QToolButton:hover,QPushButton:hover { background:%4; } QToolButton:checked { background:%4; color:%5; }"
         "QWidget#navigation QToolButton { text-align:left; padding:7px; }"
         "QToolButton#playButton { background:%5; color:#111; } QToolButton#playButton:hover { background:%5; }"
+        "QCheckBox::indicator { width:16px; height:16px; background:%2; border:1px solid %1; border-radius:3px; } QCheckBox::indicator:checked { background:%5; border-color:%5; }"
         "QPushButton { background:%3; border:1px solid %4; border-radius:5px; padding:9px 16px; }"
         "QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox { background:%3; border:1px solid %4; border-radius:5px; padding:7px; min-height:20px; }"
         "QLineEdit:focus,QComboBox:focus,QDoubleSpinBox:focus { border-color:%5; }"
@@ -425,6 +426,7 @@ void RedesignShell::openSettings(int selectedPage)
         }else if(page==6){
             auto equalizer=new Equalizer(p_intf,content);layout->addWidget(equalizer);
             for(QSlider *slider:equalizer->findChildren<QSlider*>())if(slider->orientation()==Qt::Vertical)slider->setMinimumHeight(260);
+            for(QLabel *label:equalizer->findChildren<QLabel*>())label->setFont(QApplication::font());
             connect(equalizer,&Equalizer::configChanged,this,[this](const QString &name,const QVariant &value){
                 if(value.type()==QVariant::String)config_PutPsz(p_intf,qtu(name),qtu(value.toString()));
                 else if(value.userType()==QMetaType::Double||value.userType()==QMetaType::Float)config_PutFloat(p_intf,qtu(name),value.toDouble());
