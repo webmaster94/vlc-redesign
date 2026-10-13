@@ -43,6 +43,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/build-validation/contrib/contrib-win64"
           make -j4 fetch PKGS_FOUND= 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
           cd "$GITHUB_WORKSPACE"
+          mkdir -p dist
           tar -cJf dist/Reframe-3.0.24-r1-dependency-source.tar.xz -C contrib tarballs
           python3 extras/package/redesign/collect-notices.py --archives contrib/tarballs --existing build-validation/contrib/x86_64-w64-mingw32/share/licenses --output build-validation/dependency-licenses
       - name: Build the NSIS installer
