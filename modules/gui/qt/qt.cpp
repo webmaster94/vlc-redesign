@@ -262,6 +262,10 @@ vlc_module_begin ()
             change_integer_list(i_continue_list, psz_continue_list_text )
     add_bool( "qt-dark-palette", false, QT_DARK_TEXT,
                   QT_DARK_LONGTEXT, false )
+    // Reframe widget-only screenshot for build verification, 2026-10-12.
+    add_string( "qt-redesign-preview", "", "Save a Reframe preview and exit",
+                "PNG path for verifying this application's rendered window", true )
+        change_volatile()
 
 #ifdef UPDATE_CHECK
     add_bool( "qt-updates-notif", true, UPDATER_TEXT,
@@ -584,8 +588,9 @@ static void *ThreadPlatform( void *obj, char *platform_name )
     char *cConfigDir = config_GetUserDir( VLC_CONFIG_DIR );
     QString configDir = cConfigDir;
     free( cConfigDir );
-    if( configDir.endsWith( "\\vlc" ) )
-        configDir.chop( 4 ); /* the "\vlc" dir is added again by QSettings */
+    // Reframe stores Qt settings beside its isolated core preferences.
+    if( configDir.endsWith( "\\Reframe" ) )
+        configDir.chop( 8 );
     QSettings::setPath( QSettings::IniFormat, QSettings::UserScope, configDir );
 #endif
 
@@ -595,7 +600,7 @@ static void *ThreadPlatform( void *obj, char *platform_name )
 #else
             QSettings::NativeFormat,
 #endif
-            QSettings::UserScope, "vlc", "vlc-qt-interface" );
+            QSettings::UserScope, "Reframe", "reframe-qt-interface" );
 
     if( QDate::currentDate().dayOfYear() >= QT_XMAS_JOKE_DAY && var_InheritBool( p_intf, "qt-icon-change" ) )
         app.setWindowIcon( QIcon::fromTheme( "vlc-xmas", QIcon( ":/logo/vlc128-xmas.png" ) ) );
@@ -682,8 +687,7 @@ static void *ThreadPlatform( void *obj, char *platform_name )
         QApplication::setStyle( s_style );
 
     // Apply dark palette only if dark palette is enabled
-    if (isDarkPaletteEnabled(p_intf))
-        applyDarkPalette();
+    // Reframe's selected theme and accent are applied by RedesignShell.
 
     /* Launch */
     app.exec();

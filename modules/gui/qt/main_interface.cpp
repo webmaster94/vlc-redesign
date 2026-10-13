@@ -30,6 +30,7 @@
 #include "qt.hpp"
 
 #include "main_interface.hpp"
+#include "redesign.hpp" // Reframe native interface, 2026-10-12
 #include "input_manager.hpp"                    // Creation
 #include "actions_manager.hpp"                  // killInstance
 
@@ -96,6 +97,7 @@ const QEvent::Type MainInterface::ToolbarsNeedRebuild =
 
 MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
 {
+    redesignShell = NULL;
     /* Variables initialisation */
     bgWidget             = NULL;
     videoWidget          = NULL;
@@ -132,7 +134,7 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
     setWindowOpacity( var_InheritFloat( p_intf, "qt-opacity" ) );
 
     /* Does the interface resize to video size or the opposite */
-    b_autoresize = var_InheritBool( p_intf, "qt-video-autoresize" );
+    b_autoresize = false; /* Reframe preserves the library/player window size. */
 
     /* Are we in the enhanced always-video mode or not ? */
     b_minimalView = var_InheritBool( p_intf, "qt-minimal-view" );
@@ -165,6 +167,13 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
              THEDP, &DialogsProvider::destroyPopupMenu );
 
     createMainWidget( settings );
+    bgWidget->setWithArt( false );
+    redesignShell = new RedesignShell( p_intf, this, takeCentralWidget() );
+    setCentralWidget( redesignShell );
+    controls->hide();
+    inputC->hide();
+    menuBar()->hide();
+    setWindowFlags( windowFlags() | Qt::FramelessWindowHint );
 
 #ifndef QT_NO_STATUSBAR
     /**************
@@ -255,7 +264,7 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
     if( settings->value( "MainWindow/playlist-visible", false ).toBool() )
         togglePlaylist();
 
-    QVLCTools::restoreWidgetPosition( settings, this, QSize(600, 420) );
+    QVLCTools::restoreWidgetPosition( settings, this, QSize(1280, 760) );
 
     b_interfaceFullScreen = isFullScreen();
 
@@ -266,6 +275,17 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
         toggleMinimalView( true );
 
     computeMinimumSize();
+    setMinimumSize( 900, 500 );
+    char *preview = var_InheritString( p_intf, "qt-redesign-preview" );
+    if( preview && *preview )
+    {
+        const QString destination = QString::fromUtf8( preview );
+        QTimer::singleShot( 1500, this, [this, destination] {
+            grab().save( destination );
+            THEDP->quit();
+        } );
+    }
+    free( preview );
 }
 
 MainInterface::~MainInterface()
@@ -1128,6 +1148,7 @@ void MainInterface::dockPlaylist( bool p_docked )
  */
 void MainInterface::displayNormalView()
 {
+    if( redesignShell ) redesignShell->setMinimal( true );
     menuBar()->setVisible( false );
     controls->setVisible( false );
 #ifndef QT_NO_STATUSBAR
@@ -1142,6 +1163,15 @@ void MainInterface::displayNormalView()
  */
 void MainInterface::setMinimalView( bool b_minimal )
 {
+    if( redesignShell )
+    {
+        menuBar()->hide(); controls->hide(); inputC->hide();
+#ifndef QT_NO_STATUSBAR
+        statusBar()->hide();
+#endif
+        redesignShell->setMinimal( b_minimal );
+        return;
+    }
     bool b_menuBarVisible = menuBar()->isVisible();
     bool b_controlsVisible = controls->isVisible();
 #ifndef QT_NO_STATUSBAR
@@ -1292,11 +1322,11 @@ void MainInterface::setVLCWindowsTitle( const QString& aTitle )
 {
     if( aTitle.isEmpty() )
     {
-        setWindowTitle( qtr( "VLC media player" ) );
+        setWindowTitle( qtr( "Reframe" ) );
     }
     else
     {
-        setWindowTitle( aTitle + " - " + qtr( "VLC media player" ) );
+        setWindowTitle( aTitle + " - " + qtr( "Reframe" ) );
     }
 }
 

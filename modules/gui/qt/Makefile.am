@@ -49,6 +49,7 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/qt.cpp gui/qt/qt.hpp gui/qt/qt_x11.hpp \
 	gui/qt/menus.cpp gui/qt/menus.hpp \
 	gui/qt/main_interface.cpp gui/qt/main_interface.hpp \
+	gui/qt/redesign.cpp gui/qt/redesign.hpp \
 	gui/qt/dialogs_provider.cpp gui/qt/dialogs_provider.hpp \
 	gui/qt/input_manager.cpp gui/qt/input_manager.hpp \
 	gui/qt/actions_manager.cpp gui/qt/actions_manager.hpp \

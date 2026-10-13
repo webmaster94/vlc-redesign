@@ -53,6 +53,7 @@ class QMenu;
 class QSize;
 class QScreen;
 class QTimer;
+class RedesignShell;
 class StandardPLPanel;
 struct vout_window_t;
 
@@ -139,6 +140,7 @@ protected:
 
     /* */
     QSettings           *settings;
+    RedesignShell       *redesignShell;
     QSystemTrayIcon     *sysTray;
     QMenu               *systrayMenu;
 

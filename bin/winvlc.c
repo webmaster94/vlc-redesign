@@ -220,9 +220,9 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
         else
         {
             size_t pathlen = wcslen(path);
-            if ( pathlen + 1 + wcslen(L"\\vlc\\crashdump" ) <= MAX_PATH )
+            if ( pathlen + 1 + wcslen(L"\\Reframe\\crashdump" ) <= MAX_PATH )
             {
-                wcscpy( &path[pathlen], L"\\vlc\\crashdump" );
+                wcscpy( &path[pathlen], L"\\Reframe\\crashdump" );
                 CheckCrashDump( path );
                 eh = InstallCrashHandler( path );
             }
@@ -238,7 +238,7 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
     if (!lang)
     {
         HKEY h_key;
-        if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT("Software\\VideoLAN\\VLC\\"), 0, KEY_READ, &h_key )
+        if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT("Software\\Reframe\\"), 0, KEY_READ, &h_key )
                 == ERROR_SUCCESS )
         {
             TCHAR szData[256];
@@ -261,9 +261,10 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
     vlc = libvlc_new (argc, (const char **)argv);
     if (vlc != NULL)
     {
-        libvlc_set_app_id (vlc, "org.VideoLAN.VLC", PACKAGE_VERSION,
+        /* Reframe identity, isolated from the official player, 2026-10-12. */
+        libvlc_set_app_id (vlc, "org.webmaster94.Reframe", PACKAGE_VERSION,
                            PACKAGE_NAME);
-        libvlc_set_user_agent (vlc, "VLC media player", "VLC/"PACKAGE_VERSION);
+        libvlc_set_user_agent (vlc, "Reframe", "Reframe/"PACKAGE_VERSION);
         libvlc_add_intf (vlc, "hotkeys,none");
         libvlc_add_intf (vlc, "globalhotkeys,none");
         libvlc_add_intf (vlc, NULL);
@@ -272,9 +273,9 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
         libvlc_release (vlc);
     }
     else
-        MessageBox (NULL, TEXT("VLC media player could not start.\n"
+        MessageBox (NULL, TEXT("Reframe could not start.\n"
                     "Either the command line options were invalid or no plugins were found.\n"),
-                    TEXT("VLC media player"),
+                    TEXT("Reframe"),
                     MB_OK|MB_ICONERROR);
 
 

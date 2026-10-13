@@ -1,10 +1,10 @@
-name: Windows build validation
+name: Windows build and installer
 
 on:
   workflow_dispatch:
   push:
     branches: [redesign]
-    paths: [.github/workflows/redesign-build.yml]
+    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'extras/package/redesign/**', 'src/win32/**', 'bin/**']
 
 permissions:
   contents: read
@@ -30,6 +30,23 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/build-validation"
           cd "$GITHUB_WORKSPACE/build-validation"
           ../extras/package/win32/build.sh -a x86_64 -p 2>&1 | tee build.log
+          make -C win64 package-win-common
+          python3 ../extras/package/redesign/package.py --payload win64/vlc-3.0.24 --output "$GITHUB_WORKSPACE/dist"
+          cd "$GITHUB_WORKSPACE"
+          git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r1-source.tar.xz
+          cp doc/redesign/credits.txt dist/CREDITS.txt
+      - name: Keep installer and portable player
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reframe-windows-x64
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.tar.xz
+            dist/SHA256SUMS
+            dist/CREDITS.txt
+          if-no-files-found: error
+          retention-days: 14
       - name: Keep build logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
