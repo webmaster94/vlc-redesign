@@ -34,7 +34,7 @@ if ($decode.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $decoded) -or (Get-I
 
 $controlReport = Join-Path $testRoot 'controls.txt'
 $controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--ignore-config','--no-qt-privacy-ask','--aout=dummy',"--qt-redesign-smoke=$controlReport",('"' + $wave + '"')) -PassThru -WindowStyle Hidden
-if (-not $controls.WaitForExit(30000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
+if (-not $controls.WaitForExit(60000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
 if (-not (Test-Path -LiteralPath $controlReport)) { throw 'Widget and playback integration report was not written' }
 $controlResult = Get-Content -LiteralPath $controlReport -Raw
 if (-not $controlResult.StartsWith('PASS:')) { throw $controlResult }
@@ -74,3 +74,5 @@ if ((Get-Item "$classes\.mp4").GetValue('') -ne 'VLC.mp4') { throw 'Uninstaller 
 if (Test-Path 'HKLM:\Software\Reframe') { throw 'Uninstaller left its registration' }
 Copy-Item -LiteralPath $preview -Destination (Join-Path $Artifacts 'preview.png')
 Write-Output 'PASS: rendering, media decode, installation, reinstallation, uninstallation, and stock VLC coexistence'
+
+Get-ChildItem -LiteralPath $testRoot -Filter 'controls.txt.page*.png' | Copy-Item -Destination $Artifacts

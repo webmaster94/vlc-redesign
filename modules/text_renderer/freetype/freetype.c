@@ -972,12 +972,54 @@ static inline int RenderAXYZ( filter_t *p_filter,
 
 static void UpdateDefaultLiveStyles( filter_t *p_filter )
 {
-    text_style_t *p_style = p_filter->p_sys->p_default_style;
+    /* Reframe: apply the live subtitle editor without restarting playback.
+     * Modification copyright 2026 webmaster94, LGPL-2.1-or-later. */
+    filter_sys_t *p_sys = p_filter->p_sys;
+    text_style_t *p_style = p_sys->p_default_style;
 
     p_style->i_font_color = var_InheritInteger( p_filter, "freetype-color" );
 
     p_style->i_background_alpha = var_InheritInteger( p_filter, "freetype-background-opacity" );
     p_style->i_background_color = var_InheritInteger( p_filter, "freetype-background-color" );
+    p_style->i_font_alpha = var_InheritInteger( p_filter, "freetype-opacity" );
+    p_style->i_outline_alpha = var_InheritInteger( p_filter, "freetype-outline-opacity" );
+    p_style->i_outline_color = var_InheritInteger( p_filter, "freetype-outline-color" );
+    p_style->i_shadow_alpha = var_InheritInteger( p_filter, "freetype-shadow-opacity" );
+    p_style->i_shadow_color = var_InheritInteger( p_filter, "freetype-shadow-color" );
+
+    char *font = var_InheritString( p_filter, "freetype-font" );
+    if( font && *font && (!p_style->psz_fontname || strcmp(font,p_style->psz_fontname)) )
+    {
+        free(p_style->psz_fontname);
+        p_style->psz_fontname = font;
+    }
+    else free(font);
+    char *mono = var_InheritString( p_filter, "freetype-monofont" );
+    if( mono && *mono && (!p_style->psz_monofontname || strcmp(mono,p_style->psz_monofontname)) )
+    {
+        free(p_style->psz_monofontname);
+        p_style->psz_monofontname = mono;
+    }
+    else free(mono);
+
+    p_sys->p_forced_style->i_font_size = var_InheritInteger(p_filter,"freetype-fontsize");
+    const int relative = var_InheritInteger(p_filter,"freetype-rel-fontsize");
+    p_sys->p_forced_style->f_font_relsize = relative ? 100.0 / relative : 0;
+    p_style->i_font_size = p_sys->p_forced_style->i_font_size;
+    p_style->f_font_relsize = p_sys->p_forced_style->f_font_relsize;
+    p_style->i_style_flags &= ~STYLE_BOLD;
+    p_sys->p_forced_style->i_style_flags &= ~STYLE_BOLD;
+    if(var_InheritBool(p_filter,"freetype-bold"))
+    {
+        p_style->i_style_flags |= STYLE_BOLD;
+        p_sys->p_forced_style->i_style_flags |= STYLE_BOLD;
+        p_sys->p_forced_style->i_features |= STYLE_HAS_FLAGS;
+    }
+    const float angle = var_InheritFloat(p_filter,"freetype-shadow-angle");
+    float distance = var_InheritFloat(p_filter,"freetype-shadow-distance");
+    distance = VLC_CLIP(distance,0,1);
+    p_sys->f_shadow_vector_x = distance * cosf((float)(2. * M_PI) * angle / 360);
+    p_sys->f_shadow_vector_y = distance * sinf((float)(2. * M_PI) * angle / 360);
 }
 
 static void FillDefaultStyles( filter_t *p_filter )

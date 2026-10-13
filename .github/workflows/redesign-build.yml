@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [redesign]
-    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'extras/package/redesign/**', 'src/win32/**', 'bin/**']
+    paths: [.github/workflows/redesign-build.yml, 'modules/gui/qt/**', 'modules/text_renderer/**', 'modules/codec/libass.c', 'extras/package/redesign/**', 'src/win32/**', 'bin/**']
 
 permissions:
   contents: read
@@ -100,3 +100,4 @@ jobs:
             artifacts/preview.png
             artifacts/controls-player.png
             artifacts/controls-settings.png
+            artifacts/controls.txt.page*.png

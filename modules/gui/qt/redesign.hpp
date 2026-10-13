@@ -21,6 +21,11 @@ class QSlider;
 class QProcess;
 class QDialog;
 class QPropertyAnimation;
+class QHBoxLayout;
+class QVBoxLayout;
+class QBoxLayout;
+class QTimer;
+class RedesignPreferences;
 
 class RedesignShell : public QWidget
 {
@@ -34,6 +39,16 @@ public:
     void applyTheme();
     void openSettings(int page = 0);
     void showLibrary(const QString &section);
+    void openMediaSettings(int page = 4);
+    void openNetwork();
+    void customize();
+    void onboarding();
+    void showQueue(int tab = 0);
+    void batchTracks(const QStringList &paths = QStringList());
+    void newPlaylist(const QString &id = QString());
+    void toggleMiniPlayer();
+    void mainMenu(const QPoint &);
+    void playerMenu(const QPoint &);
 
 private:
     intf_thread_t *p_intf;
@@ -69,6 +84,22 @@ private:
     bool compact;
     bool minimal;
     QPropertyAnimation *navigationAnimation;
+    QWidget *videoPage;
+    QWidget *sidePanel;
+    QWidget *libraryDock;
+    QDialog *miniPlayer;
+    QHBoxLayout *bodyLayout;
+    QVBoxLayout *videoLayout;
+    QBoxLayout *transportLayout;
+    QTimer *chromeTimer;
+    bool remainingTime;
+    bool customizing;
+    int sortMode;
+    QSize previousSize;
+    QString currentCollection;
+    QHash<QString,QToolButton *> controlButtons;
+    QStringList appliedToolbar;
+    QString bindingInput;
 
     QToolButton *button(const QString &icon, const QString &text = QString());
     void refresh();
@@ -77,5 +108,11 @@ private:
     void nextThumbnail();
     void contextMenu(const QPoint &);
     void setNavigationWidth(bool);
+    void toggleLibraryDock();
+    void layoutControls();
+    void updateQueue();
+    void checkUpdates();
+    void applyMediaBindings();
+    bool eventFilter(QObject *,QEvent *) override;
 };
 #endif

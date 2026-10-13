@@ -11,7 +11,9 @@
 #include "actions_manager.hpp"
 #include "dialogs_provider.hpp"
 #include "recents.hpp"
-#include "components/extended_panels.hpp"
+#include "redesign_settings.hpp"
+#include "redesign_controls.hpp"
+#include "redesign_seek.hpp"
 #include <vlc_configuration.h>
 #include <vlc_aout.h>
 #include <QApplication>
@@ -55,6 +57,7 @@
 #include <QFile>
 #include <cmath>
 #include <algorithm>
+#include <memory>
 
 namespace {
 QIcon lineIcon(const QString &name, const QColor &color = QColor("#b8b8b8"))
@@ -85,6 +88,20 @@ QIcon lineIcon(const QString &name, const QColor &color = QColor("#b8b8b8"))
     } else if(name == "previous" || name == "next") { bool prev=name=="previous"; int x=prev?16:8; QPolygonF tri;tri<<QPointF(x,6)<<QPointF(prev?7:17,12)<<QPointF(x,18);p.setBrush(color);p.drawPolygon(tri);line(prev?5:19,6,prev?5:19,18);
     } else if(name == "stop") {p.drawRoundedRect(QRectF(6,6,12,12),1,1);
     } else if(name == "audio") {for(int i=0;i<5;i++){int h=i==2?18:(i%2?12:6);line(4+i*4,12-h/2,4+i*4,12+h/2);}
+    } else if(name=="sliders"){for(int x=5;x<=19;x+=7){line(x,3,x,21);p.drawRoundedRect(QRectF(x-3,x==12?7:13,6,3),1,1);}
+    } else if(name=="pointer"){QPolygonF shape;shape<<QPointF(5,3)<<QPointF(19,15)<<QPointF(13,16)<<QPointF(10,21)<<QPointF(5,3);p.drawPolygon(shape);
+    } else if(name=="shield"){QPainterPath path;path.moveTo(12,3);path.cubicTo(7,4,4,6,4,8);path.cubicTo(4,16,8,20,12,22);path.cubicTo(16,20,20,16,20,8);path.cubicTo(20,6,17,4,12,3);p.drawPath(path);
+    } else if(name=="keyboard"){p.drawRoundedRect(QRectF(2,5,20,14),3,3);for(int x=6;x<20;x+=4)for(int y=9;y<14;y+=4)p.drawPoint(x,y);line(6,16,18,16);
+    } else if(name=="record"){p.drawEllipse(4,4,16,16);p.setBrush(color);p.drawEllipse(9,9,6,6);
+    } else if(name=="puzzle"){QPainterPath path;path.moveTo(4,4);path.lineTo(10,4);path.cubicTo(8,-1,16,-1,14,4);path.lineTo(20,4);path.lineTo(20,10);path.cubicTo(25,8,25,16,20,14);path.lineTo(20,20);path.lineTo(14,20);path.cubicTo(16,15,8,15,10,20);path.lineTo(4,20);path.lineTo(4,4);p.drawPath(path);
+    } else if(name=="favorite"){p.drawPolyline(QPolygonF()<<QPointF(12,2)<<QPointF(15,9)<<QPointF(22,10)<<QPointF(17,15)<<QPointF(18,22)<<QPointF(12,18)<<QPointF(6,22)<<QPointF(7,15)<<QPointF(2,10)<<QPointF(9,9)<<QPointF(12,2));
+    } else if(name=="bookmark"||name=="bookmarks"){QPolygonF shape;shape<<QPointF(6,3)<<QPointF(18,3)<<QPointF(18,21)<<QPointF(12,17)<<QPointF(6,21)<<QPointF(6,3);p.drawPolygon(shape);
+    } else if(name=="snapshot"){p.drawRoundedRect(QRectF(3,7,18,13),3,3);p.drawRect(7,4,10,3);p.drawEllipse(8,10,8,8);
+    } else if(name=="mini"){p.drawRoundedRect(QRectF(2,4,20,16),2,2);p.drawRect(11,12,8,5);
+    } else if(name=="repeat"||name=="replay"){p.drawArc(4,4,16,16,20*16,300*16);line(20,4,20,10);line(20,10,14,10);
+    } else if(name=="shuffle"){line(3,5,9,5);line(9,5,15,19);line(15,19,21,19);line(3,19,9,19);line(9,19,15,5);line(15,5,21,5);line(18,2,21,5);line(21,5,18,8);
+    } else if(name.startsWith("back")||name.startsWith("forward")){p.drawArc(4,4,16,16,30*16,300*16);p.setFont(QFont("Inter",6));p.drawText(QRect(4,4,16,16),Qt::AlignCenter,name.endsWith("15")?"15":"10");
+    } else if(name=="speed"||name=="hdr"||name=="zoom"){p.setFont(QFont("Inter",name=="hdr"?7:9));p.drawText(QRect(0,2,24,20),Qt::AlignCenter,name=="speed"?"1x":name=="hdr"?"HDR":"1:1");
     } else if(name == "volume" || name == "mute") {QPolygonF sp;sp<<QPointF(3,9)<<QPointF(7,9)<<QPointF(12,5)<<QPointF(12,19)<<QPointF(7,15)<<QPointF(3,15);p.drawPolygon(sp);if(name=="volume"){p.drawArc(10,5,10,14,-60*16,120*16);}else{line(17,8,22,16);line(22,8,17,16);}
     } else if(name == "settings") {p.drawEllipse(8,8,8,8);for(int i=0;i<8;i++){p.save();p.translate(12,12);p.rotate(i*45);p.drawRoundedRect(QRectF(-2,-10,4,4),1,1);p.restore();}
     } else if(name == "subtitles") {p.drawRoundedRect(QRectF(2,5,20,14),3,3);line(5,11,10,11);line(13,11,19,11);line(5,15,13,15);line(16,15,19,15);
@@ -151,6 +168,7 @@ QString clockText(qint64 seconds) {
     return QString("%1:%2:%3").arg(seconds/3600,2,10,QChar('0')).arg(seconds/60%60,2,10,QChar('0')).arg(seconds%60,2,10,QChar('0'));
 }
 }
+QIcon Reframe::icon(const QString &name,const QColor &color){return lineIcon(name,color);}
 
 QToolButton *RedesignShell::button(const QString &name,const QString &text)
 {
@@ -166,7 +184,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     :QWidget(w),p_intf(intf),window(w),player(panel),settingsDialog(nullptr),historyPosition(-1),
       systemPalette(QApplication::palette()),thumbnailProcess(nullptr),compact(false),minimal(false)
 {
-    navigationAnimation=nullptr;
+    navigationAnimation=nullptr;sidePanel=nullptr;libraryDock=nullptr;miniPlayer=nullptr;remainingTime=false;customizing=false;sortMode=0;
     const QDir fonts(QCoreApplication::applicationDirPath()+"/fonts");
     for(const QString &f:fonts.entryList(QStringList()<<"*.ttf",QDir::Files))QFontDatabase::addApplicationFont(fonts.filePath(f));
     setObjectName("redesignShell");
@@ -178,7 +196,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     auto logo=button("brand");logo->setToolTip("Reframe, an unofficial VLC fork");title->addWidget(logo);
     connect(logo,&QToolButton::clicked,this,[this]{showLibrary("Home");});
     auto menuButton=button("more");menuButton->setToolTip("Main menu");title->addWidget(menuButton);
-    connect(menuButton,&QToolButton::clicked,this,[this,menuButton]{QMenu m;for(QAction *a:window->menuBar()->actions())if(a->menu())m.addMenu(a->menu());m.exec(menuButton->mapToGlobal(QPoint(0,menuButton->height())));});
+    connect(menuButton,&QToolButton::clicked,this,[this,menuButton]{mainMenu(menuButton->mapToGlobal(QPoint(0,menuButton->height())));});
     auto navToggle=button("list");navToggle->setToolTip("Toggle navigation sidebar");title->addWidget(navToggle);
     connect(navToggle,&QToolButton::clicked,this,[this]{setNavigationWidth(!compact);});
     title->addStretch();auto titleLabel=new QLabel("Reframe");titleLabel->setObjectName("windowTitle");title->addWidget(titleLabel);title->addStretch();
@@ -189,7 +207,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
         connect(b,&QToolButton::clicked,this,[this,name]{if(name=="minimize")window->showMinimized();else if(name=="maximize"){if(window->isMaximized())window->showNormal();else window->showMaximized();}else if(name=="fullscreen")window->toggleInterfaceFullScreen();else window->close();});
     }
     root->addWidget(header);
-    auto body=new QWidget(this);auto bodyLayout=new QHBoxLayout(body);bodyLayout->setContentsMargins(8,8,8,8);bodyLayout->setSpacing(16);
+    auto body=new QWidget(this);bodyLayout=new QHBoxLayout(body);bodyLayout->setContentsMargins(8,8,8,8);bodyLayout->setSpacing(16);
     sidebar=new QWidget(body);sidebar->setObjectName("navigation");sidebar->setFixedWidth(196);
     auto navigation=new QVBoxLayout(sidebar);navigation->setContentsMargins(8,10,8,10);navigation->setSpacing(8);
     QButtonGroup *navGroup=new QButtonGroup(this);navGroup->setExclusive(true);
@@ -197,7 +215,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     const QStringList icons=QStringList()<<"home"<<"videos"<<"music"<<"network"<<"playlist"<<"recent";
     for(int i=0;i<names.size();++i){auto b=button(icons[i],names[i]);b->setProperty("section",names[i]);b->setCheckable(true);b->setFixedHeight(40);navGroup->addButton(b);navigation->addWidget(b);connect(b,&QToolButton::clicked,this,[this,names,i]{showLibrary(names[i]);});}
     auto add=button("add","Add item");navigation->addWidget(add);
-    connect(add,&QToolButton::clicked,THEDP,&DialogsProvider::openFileDialog);
+    connect(add,&QToolButton::clicked,this,[this,add]{QMenu m; m.addAction("Open File(s)",THEDP,&DialogsProvider::openFileDialog);m.addAction("Open Folder",this,[this]{auto path=QFileDialog::getExistingDirectory(this,"Open Folder");if(!path.isEmpty())browse(path);});m.addAction("Open Network Stream",this,[this]{openNetwork();});m.addAction("New Playlist",this,[this]{newPlaylist();});m.exec(add->mapToGlobal(QPoint(0,add->height())));});
     navigation->addStretch();auto prefs=button("settings","Settings");navigation->addWidget(prefs);connect(prefs,&QToolButton::clicked,this,[this]{openSettings();});
     bodyLayout->addWidget(sidebar);
     pages=new QStackedWidget(body);pages->setObjectName("content");
@@ -218,19 +236,19 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(files,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *item){QString path=item->data(Qt::UserRole).toString();if(QFileInfo(path).isDir())browse(path);else openMedia(path);});
     connect(files,&QListWidget::customContextMenuRequested,this,&RedesignShell::contextMenu);
     library->addWidget(files,1);empty=new QLabel;empty->setAlignment(Qt::AlignCenter);empty->setWordWrap(true);empty->setObjectName("emptyState");library->addWidget(empty,1);
-    pages->addWidget(browser);pages->addWidget(player);bodyLayout->addWidget(pages,1);root->addWidget(body,1);
+    pages->addWidget(browser);videoPage=new QWidget(pages);videoLayout=new QVBoxLayout(videoPage);videoLayout->setContentsMargins(0,0,0,0);videoLayout->addWidget(player);pages->addWidget(videoPage);bodyLayout->addWidget(pages,1);root->addWidget(body,1);
 
-    transport=new QWidget(this);transport->setObjectName("transport");transport->setFixedHeight(48);
-    auto bar=new QHBoxLayout(transport);bar->setContentsMargins(12,4,12,4);bar->setSpacing(8);
+    transport=new QWidget(this);transport->setObjectName("transport");transport->setFixedHeight(54);
+    auto bar=new QHBoxLayout(transport);transportLayout=bar;bar->setContentsMargins(12,4,12,4);bar->setSpacing(8);
     auto previous=button("previous");bar->addWidget(previous);connect(previous,&QToolButton::clicked,THEMIM,&MainInputManager::prev);
     playButton=button("play");playButton->setObjectName("playButton");playButton->setToolTip("Play / Pause");playButton->setFixedSize(54,30);bar->addWidget(playButton);connect(playButton,&QToolButton::clicked,THEAM,&ActionsManager::play);
     auto next=button("next");bar->addWidget(next);connect(next,&QToolButton::clicked,THEMIM,&MainInputManager::next);
     auto stop=button("stop");bar->addWidget(stop);connect(stop,&QToolButton::clicked,THEMIM,&MainInputManager::stop);
     elapsed=new QLabel("00:00:00");elapsed->setObjectName("elapsedTime");elapsed->setMinimumWidth(62);bar->addWidget(elapsed);
-    seek=new ClickSlider(transport);seek->setObjectName("seek");seek->setRange(0,100000);seek->setEnabled(false);seek->setAccessibleName("Playback position");bar->addWidget(seek,1);
+    seek=new RedesignSeek(p_intf,transport);seek->setObjectName("seek");seek->setRange(0,100000);seek->setEnabled(false);seek->setAccessibleName("Playback position");bar->addWidget(seek,1);
     connect(seek,&QSlider::valueChanged,this,[this](int v){THEMIM->getIM()->sliderUpdate(v/100000.f);});
-    duration=new QLabel("00:00:00");duration->setMinimumWidth(62);bar->addWidget(duration);
-    connect(THEMIM->getIM(),&InputManager::positionUpdated,this,[this](float pos,int64_t time,int length){elapsed->setText(clockText(time/CLOCK_FREQ));duration->setText(clockText(length));if(!seek->isSliderDown()){QSignalBlocker blocked(seek);seek->setValue(qMax(0,qRound(pos*100000)));}});
+    duration=new QLabel("00:00:00");duration->setMinimumWidth(62);duration->installEventFilter(this);bar->addWidget(duration);
+    connect(THEMIM->getIM(),&InputManager::positionUpdated,this,[this](float pos,int64_t time,int length){elapsed->setText(clockText(time/CLOCK_FREQ));duration->setText((remainingTime?"-":"")+clockText(remainingTime?qMax<qint64>(0,length-time/CLOCK_FREQ):length));if(!seek->isSliderDown()){QSignalBlocker blocked(seek);seek->setValue(qMax(0,qRound(pos*100000)));}});
     connect(THEMIM->getIM(),&InputManager::inputCanSeek,seek,&QSlider::setEnabled);
     connect(THEMIM->getIM(),&InputManager::playingStatusChanged,this,[this](int state){playButton->setProperty("glyph",state==PLAYING_S?"pause":"play");playButton->setIcon(lineIcon(state==PLAYING_S?"pause":"play",QColor("#111111")));if(state==END_S)seek->setEnabled(false);});
     auto mute=button("volume");mute->setToolTip("Mute / Unmute");bar->addWidget(mute);connect(mute,&QToolButton::clicked,THEAM,&ActionsManager::toggleMuteAudio);
@@ -239,12 +257,17 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(THEMIM,&MainInputManager::volumeChanged,this,[this](float v){QSignalBlocker blocked(volume);volume->setValue(qRound(v*100));});
     auto eq=button("audio"),sub=button("subtitles"),settings=button("settings"),playlist=button("playlist");bar->addWidget(eq);bar->addWidget(sub);bar->addWidget(settings);bar->addWidget(playlist);
     eq->setToolTip("Audio effects");sub->setToolTip("Subtitles and synchronization");settings->setToolTip("Settings");playlist->setToolTip("Playlist");
-    connect(eq,&QToolButton::clicked,this,[this]{openSettings(6);});connect(sub,&QToolButton::clicked,this,[this]{openSettings(7);});connect(settings,&QToolButton::clicked,this,[this]{openSettings();});connect(playlist,&QToolButton::clicked,this,[this]{showLibrary("Playlists");});
+    connect(eq,&QToolButton::clicked,this,[this]{openMediaSettings(6);});connect(sub,&QToolButton::clicked,this,[this]{openMediaSettings(7);});connect(settings,&QToolButton::clicked,this,[this]{openMediaSettings(4);});connect(playlist,&QToolButton::clicked,this,[this]{showQueue();});
     bar->addWidget(new QSizeGrip(window));
     root->addWidget(transport);
-    connect(THEMIM,&MainInputManager::inputChanged,this,[this](bool has){if(has)showPlayer();else{seek->setEnabled(false);QSignalBlocker blocked(seek);seek->setValue(0);}});
+    connect(THEMIM,&MainInputManager::inputChanged,this,[this](bool has){if(has){showPlayer();QTimer::singleShot(250,this,[this]{applyMediaBindings();});}else{bindingInput.clear();seek->setEnabled(false);QSignalBlocker blocked(seek);seek->setValue(0);}});
     connect(THEMIM->getIM(),&InputManager::nameChanged,this,[titleLabel](const QString &name){titleLabel->setText(name.isEmpty()?"Reframe":name);});
-    applyTheme();showLibrary("Home");
+    for(auto b:transport->findChildren<QToolButton*>())controlButtons[b->property("glyph").toString()]=b;
+    chromeTimer=new QTimer(this);chromeTimer->setSingleShot(true);connect(chromeTimer,&QTimer::timeout,this,[this]{if(minimal){header->hide();transport->hide();}});
+    qApp->installEventFilter(this);player->setContextMenuPolicy(Qt::CustomContextMenu);connect(player,&QWidget::customContextMenuRequested,this,[this](const QPoint &p){playerMenu(player->mapToGlobal(p));});
+    layoutControls();applyTheme();showLibrary("Home");
+    char *previewOption=var_InheritString(p_intf,"qt-redesign-preview"),*smokeOption=var_InheritString(p_intf,"qt-redesign-smoke"); const bool diagnostic=(previewOption&&*previewOption)||(smokeOption&&*smokeOption);free(previewOption);free(smokeOption); if(!getSettings()->value("Redesign/onboarded",false).toBool()&&!diagnostic)QTimer::singleShot(500,this,[this]{onboarding();});
+    if(getSettings()->value("Redesign/checkUpdates",false).toBool())QTimer::singleShot(5000,this,[this]{checkUpdates();});
     if(THEMIM->getIM()->hasInput())showPlayer();
 }
 
@@ -252,13 +275,14 @@ RedesignShell::~RedesignShell(){if(thumbnailProcess){thumbnailProcess->kill();th
 
 void RedesignShell::applyTheme()
 {
-    accent=getSettings()->value("Redesign/accent","#d98214").toString();
+    if(!appliedToolbar.isEmpty()&&getSettings()->contains("Redesign/toolbar")&&getSettings()->value("Redesign/toolbar").toStringList()!=appliedToolbar)layoutControls();
+    accent=getSettings()->value("Redesign/accent","#d37918").toString();
     QString theme=getSettings()->value("Redesign/theme","Dark").toString();
     bool light=theme=="Light"||(theme=="System"&&systemPalette.color(QPalette::Window).lightness()>128);
     const QString bg=light?"#f5f5f5":"#0e0e0e",panel=light?"#e9e9e9":"#191919",text=light?"#303030":"#b8b8b8",line=light?"#d0d0d0":"#292929";
     QApplication::setStyle("Fusion");QPalette p=systemPalette;
     p.setColor(QPalette::Window,QColor(bg));p.setColor(QPalette::Base,QColor(bg));p.setColor(QPalette::AlternateBase,QColor(panel));p.setColor(QPalette::Button,QColor(panel));p.setColor(QPalette::Text,QColor(text));p.setColor(QPalette::WindowText,QColor(text));p.setColor(QPalette::ButtonText,QColor(text));p.setColor(QPalette::Highlight,QColor(accent));p.setColor(QPalette::HighlightedText,QColor("#101010"));p.setColor(QPalette::Disabled,QPalette::Text,QColor("#727272"));QApplication::setPalette(p);
-    QApplication::setFont(QFont(QFontDatabase().families().contains("Inter")?"Inter":"Segoe UI",10));
+    QFont font(QFontDatabase().families().contains("Inter")?"Inter":"Segoe UI");font.setPixelSize(14);QApplication::setFont(font);
     QString css=QString(
         "QWidget { color:%1; } QWidget#redesignShell, QWidget#browser, QDialog { background:%2; }"
         "QWidget#titleBar, QWidget#navigation, QWidget#transport { background:%3; } QWidget#navigation { border-radius:7px; }"
@@ -272,7 +296,9 @@ void RedesignShell::applyTheme()
         "QLineEdit:focus,QComboBox:focus,QDoubleSpinBox:focus { border-color:%5; }"
         "QListWidget#mediaGrid { background:%2; border:0; outline:0; } QListWidget#settingsNav { background:%3; border:0; padding:8px; border-radius:7px; }"
         "QListWidget#settingsNav::item { padding:12px; border-radius:4px; } QListWidget#settingsNav::item:selected { background:%4; color:%5; }"
-        "QLabel#emptyState { color:%1; font-size:16px; } QLabel#sectionHeading { font-size:17px; padding:14px 0; }"
+        "QLabel#emptyState { color:%1; font-size:16px; } QLabel#sectionHeading { font-size:16px; font-weight:500; padding:14px 0 4px; } QLabel#dialogHeading {font-size:16px;}"
+        "QWidget#settingsCard,QWidget#segmented,QWidget#queuePanel,QWidget#libraryDock {background:%3;border-radius:6px;} QWidget#settingsContent,QWidget#mediaSettings {background:%2;}"
+        "QWidget#segmented QPushButton {border:0;padding:7px 10px;} QWidget#segmented QPushButton:checked {background:%4;color:%5;} QPushButton#foldButton {border:0;} QPushButton#mediaTab {border:0;font-size:12px;padding:10px 5px;} QPushButton#mediaTab:checked {border-bottom:2px solid %5;} QWidget#seekPreview {background:%3;border-radius:6px;}"
         "QSlider::groove:horizontal { height:10px; background:%2; border-radius:4px; } QSlider::sub-page:horizontal { background:%5; border-radius:4px; }"
         "QSlider::handle:horizontal { background:%5; width:7px; margin:-3px 0; border-radius:3px; }"
         "QSlider::groove:vertical { width:10px; background:%2; border-radius:4px; } QSlider::add-page:vertical { background:%5; border-radius:4px; }"
@@ -298,20 +324,20 @@ void RedesignShell::setNavigationWidth(bool collapse)
     sidebar->setMinimumWidth(48);
     navigationAnimation=new QPropertyAnimation(sidebar,"maximumWidth",this);
     navigationAnimation->setStartValue(sidebar->width());navigationAnimation->setEndValue(collapse?48:196);
-    navigationAnimation->setDuration(300);navigationAnimation->setEasingCurve(QEasingCurve::InOutCubic);
+    navigationAnimation->setDuration(208);navigationAnimation->setEasingCurve(Reframe::springCurve());
     navigationAnimation->start();
     for(QToolButton *b:sidebar->findChildren<QToolButton*>())b->setToolButtonStyle(collapse?Qt::ToolButtonIconOnly:Qt::ToolButtonTextBesideIcon);
 }
-void RedesignShell::showPlayer(){pages->setCurrentWidget(player);setNavigationWidth(getSettings()->value("Redesign/compactOnPlayback",true).toBool());}
-bool RedesignShell::isPlayerVisible() const {return pages->currentWidget()==player;}
+void RedesignShell::showPlayer(){if(miniPlayer){miniPlayer->layout()->removeWidget(player);videoLayout->addWidget(player);miniPlayer->close();miniPlayer=nullptr;}pages->setCurrentWidget(videoPage);setNavigationWidth(getSettings()->value("Redesign/compactOnPlayback",true).toBool());}
+bool RedesignShell::isPlayerVisible() const {return pages->currentWidget()==videoPage;}
 void RedesignShell::setMinimal(bool m){minimal=m;header->setVisible(!m);sidebar->setVisible(!m);transport->setVisible(!m);if(m)showPlayer();}
 
 void RedesignShell::showLibrary(const QString &name)
 {
     section=name;setNavigationWidth(false);
     for(QToolButton *b:sidebar->findChildren<QToolButton*>())if(b->property("section").isValid())b->setChecked(b->property("section").toString()==name);
-    if(name=="Network"){THEDP->openNetDialog();return;}
-    if(name=="Playlists"){showPlayer();if(!window->isPlaylistVisible())window->togglePlaylist();return;}
+    if(name=="Network"){currentDirectory.clear();pages->setCurrentWidget(browser);refresh();return;}
+    if(name=="Playlists"){currentDirectory.clear();pages->setCurrentWidget(browser);refresh();return;}
     pages->setCurrentWidget(browser);search->clear();
     if(name=="Recent"||name=="Home"){currentDirectory.clear();refresh();return;}
     QString d=getSettings()->value("Redesign/"+name+"Directory",QStandardPaths::writableLocation(name=="Music"?QStandardPaths::MusicLocation:QStandardPaths::MoviesLocation)).toString();browse(d);
@@ -328,13 +354,17 @@ void RedesignShell::refresh()
 {
     files->clear();thumbnailQueue.clear();location->setText(currentDirectory.isEmpty()?section:QDir::toNativeSeparators(currentDirectory));
     QStringList paths;
-    if(currentDirectory.isEmpty())paths=RecentsMRL::getInstance(p_intf)->recentList();
+    if(currentDirectory.isEmpty()){
+        if(section=="Playlists"||section=="Network"){const auto ids=getSettings()->value("Redesign/collections").toStringList();for(const auto &id:ids){const auto data=getSettings()->value("Redesign/collection/"+id).toMap();if(data.value("network").toBool()==(section=="Network"))paths<<("collection:"+id);}}
+        else paths=RecentsMRL::getInstance(p_intf)->recentList();
+    }
     else {
         const QStringList filters=QStringList()<<"*.mp4"<<"*.mkv"<<"*.avi"<<"*.mov"<<"*.webm"<<"*.m4v"<<"*.wmv"<<"*.ts"<<"*.mpeg"<<"*.mpg"<<"*.flv"<<"*.mp3"<<"*.flac"<<"*.wav"<<"*.ogg"<<"*.opus"<<"*.m4a"<<"*.aac"<<"*.wma"<<"*.aiff"<<"*.m3u"<<"*.m3u8"<<"*.xspf";
         QDir d(currentDirectory);d.setNameFilters(filters);d.setFilter(QDir::AllDirs|QDir::Files|QDir::NoDotAndDotDot|QDir::Readable);d.setSorting(QDir::DirsFirst|QDir::Name|QDir::IgnoreCase);
         for(const QFileInfo &f:d.entryInfoList())paths<<f.absoluteFilePath();
     }
     for(const QString &path:paths){
+        if(path.startsWith("collection:")){const auto id=path.mid(11);const auto data=getSettings()->value("Redesign/collection/"+id).toMap();auto item=new QListWidgetItem(data.value("name").toString(),files);item->setData(Qt::UserRole,path);item->setIcon(data.value("thumbnail").toString().isEmpty()?lineIcon("playlist",QColor(accent)):QIcon(data.value("thumbnail").toString()));continue;}
         QUrl url(path);QString local=url.isLocalFile()?url.toLocalFile():path;QFileInfo f(local);bool folder=f.isDir();
         if(!folder&&!f.exists()&&url.scheme().isEmpty())continue;
         auto item=new QListWidgetItem(f.fileName().isEmpty()?path:f.fileName(),files);item->setToolTip(local);item->setData(Qt::UserRole,local);
@@ -353,6 +383,7 @@ void RedesignShell::refresh()
 
 void RedesignShell::openMedia(const QString &path)
 {
+    if(path.startsWith("collection:")){currentCollection=path.mid(11);const auto data=getSettings()->value("Redesign/collection/"+currentCollection).toMap();const auto paths=data.value("paths").toStringList();bool first=true;for(const auto &item:paths){Open::openMRL(p_intf,QUrl::fromUserInput(item,QString(),QUrl::AssumeLocalFile).toString(),first);first=false;}showPlayer();showQueue();return;}
     QUrl url=QUrl::fromUserInput(path,QString(),QUrl::AssumeLocalFile);
     showPlayer();if(window->isPlaylistVisible())window->togglePlaylist();Open::openMRL(p_intf,url.toString());
 }
@@ -382,80 +413,10 @@ void RedesignShell::nextThumbnail()
 
 void RedesignShell::openSettings(int selectedPage)
 {
-    if(settingsDialog){
-        if(auto nav=settingsDialog->findChild<QListWidget *>("settingsNav"))nav->setCurrentRow(selectedPage);
-        settingsDialog->raise();settingsDialog->activateWindow();return;
-    }
-    settingsDialog=new QDialog(window);settingsDialog->setAttribute(Qt::WA_DeleteOnClose);settingsDialog->setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);settingsDialog->setWindowTitle("Reframe settings");settingsDialog->resize(1048,820);
+    if(settingsDialog){static_cast<RedesignPreferences *>(settingsDialog)->selectPage(selectedPage);settingsDialog->raise();settingsDialog->activateWindow();return;}
+    settingsDialog=new RedesignPreferences(p_intf,window,selectedPage,[this]{applyTheme();});
     connect(settingsDialog,&QObject::destroyed,this,[this]{settingsDialog=nullptr;});
-    auto root=new QVBoxLayout(settingsDialog);root->setContentsMargins(16,16,16,16);root->setSpacing(16);
-    auto headerWidget=new TitleBar(settingsDialog);auto settingsHeader=new QHBoxLayout(headerWidget);settingsHeader->setContentsMargins(0,0,0,0);
-    auto filter=new QLineEdit;filter->setPlaceholderText("Search settings");filter->setFixedWidth(208);settingsHeader->addWidget(filter);
-    auto heading=new QLabel("Global Settings");heading->setObjectName("sectionHeading");settingsHeader->addWidget(heading,1);auto dismiss=button("close");settingsHeader->addWidget(dismiss);connect(dismiss,&QToolButton::clicked,settingsDialog,&QDialog::close);root->addWidget(headerWidget);
-    auto row=new QHBoxLayout;auto nav=new QListWidget;nav->setObjectName("settingsNav");nav->setFixedWidth(208);
-    const QStringList labels=QStringList()<<"General"<<"Interface"<<"Privacy"<<"Controls"<<"Playback"<<"Video"<<"Audio"<<"Subtitles"<<"Library"<<"Network"<<"Advanced"<<"About";
-    nav->addItems(labels);row->addWidget(nav);auto stack=new QStackedWidget;row->addWidget(stack,1);root->addLayout(row,1);
-    const QStringList glyphs=QStringList()<<"settings"<<"list"<<"home"<<"subtitles"<<"play"<<"videos"<<"audio"<<"subtitles"<<"folder"<<"network"<<"settings"<<"brand";
-    for(int i=0;i<nav->count();++i)nav->item(i)->setIcon(lineIcon(glyphs[i]));
-    connect(filter,&QLineEdit::textChanged,nav,[nav](const QString &text){for(int i=0;i<nav->count();++i)nav->item(i)->setHidden(!nav->item(i)->text().contains(text,Qt::CaseInsensitive));});
-    for(int page=0;page<labels.size();++page){
-        auto scroll=new QScrollArea;scroll->setWidgetResizable(true);auto content=new QWidget;auto layout=new QVBoxLayout(content);layout->setContentsMargins(24,4,24,24);layout->setSpacing(18);
-        auto pageTitle=new QLabel(labels[page]);pageTitle->setObjectName("sectionHeading");layout->addWidget(pageTitle);
-        auto form=new QFormLayout;form->setSpacing(20);form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);layout->addLayout(form);
-        if(page==0){
-            auto theme=new QComboBox;theme->addItems(QStringList()<<"Dark"<<"Light"<<"System");theme->setCurrentText(getSettings()->value("Redesign/theme","Dark").toString());form->addRow("Theme",theme);
-            connect(theme,&QComboBox::currentTextChanged,this,[this](const QString &value){getSettings()->setValue("Redesign/theme",value);applyTheme();});
-            auto colors=new QWidget;auto colorRow=new QHBoxLayout(colors);colorRow->setContentsMargins(0,0,0,0);
-            const QStringList accentColors=QStringList()<<"#d98214"<<"#c64d3d"<<"#c4a12e"<<"#2caa52"<<"#249dbc"<<"#3b74dd"<<"#9747ff"<<"#e349b4"<<"#b8b8b8";
-            for(const QString &color:accentColors){
-                auto b=new QPushButton;b->setFixedSize(30,30);b->setToolTip(color);b->setStyleSheet("QPushButton {background:"+color+";border:0;border-radius:3px;}");colorRow->addWidget(b);connect(b,&QPushButton::clicked,this,[this,color]{getSettings()->setValue("Redesign/accent",color);applyTheme();});
-            }form->addRow("Accent color",colors);
-            auto text=new QLabel("Appearance changes apply immediately. Other VLC preferences remain available in Advanced Options.");text->setWordWrap(true);layout->addWidget(text);
-        }else if(page==1){
-            auto hide=new QCheckBox("Compact navigation while playing");hide->setChecked(getSettings()->value("Redesign/compactOnPlayback",true).toBool());form->addRow(hide);connect(hide,&QCheckBox::toggled,this,[this](bool on){getSettings()->setValue("Redesign/compactOnPlayback",on);if(pages->currentWidget()==player)setNavigationWidth(on);});
-            auto top=new QCheckBox("Always on top");top->setChecked(window->isInterfaceAlwaysOnTop());form->addRow(top);connect(top,&QCheckBox::toggled,window,&MainInterface::setInterfaceAlwaysOnTop);
-        }else if(page==2){
-            auto network=new QCheckBox("Allow metadata network access");network->setChecked(config_GetInt(p_intf,"metadata-network-access"));form->addRow(network);connect(network,&QCheckBox::toggled,this,[this](bool b){config_PutInt(p_intf,"metadata-network-access",b);var_SetBool(p_intf->obj.libvlc,"metadata-network-access",b);config_SaveConfigFile(p_intf);});
-            auto clear=new QPushButton("Clear recent media");form->addRow(clear);connect(clear,&QPushButton::clicked,this,[this]{RecentsMRL::getInstance(p_intf)->clear();if(currentDirectory.isEmpty())refresh();});
-        }else if(page==3){
-            auto text=new QLabel("Space  Play / pause\nF  Fullscreen\nS  Stop\nN / P  Next / previous\nCtrl+O  Open media\nCtrl+Q  Quit\n\nVLC's existing hotkeys and advanced control customization are preserved.");text->setWordWrap(true);layout->addWidget(text);
-        }else if(page==4){
-            auto rate=new QDoubleSpinBox;rate->setRange(.25,4);rate->setSingleStep(.25);rate->setSuffix(" x");rate->setValue(var_GetFloat(THEPL,"rate"));form->addRow("Playback speed",rate);connect(rate,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this](double v){var_SetFloat(THEPL,"rate",v);config_PutFloat(p_intf,"rate",v);config_SaveConfigFile(p_intf);});
-            auto loop=new QCheckBox("Repeat playlist");loop->setChecked(var_GetBool(THEPL,"loop"));form->addRow(loop);connect(loop,&QCheckBox::toggled,this,[this](bool b){var_SetBool(THEPL,"loop",b);config_PutInt(p_intf,"loop",b);config_SaveConfigFile(p_intf);});
-            auto shuffle=new QCheckBox("Shuffle");shuffle->setChecked(var_GetBool(THEPL,"random"));form->addRow(shuffle);connect(shuffle,&QCheckBox::toggled,this,[this](bool b){var_SetBool(THEPL,"random",b);config_PutInt(p_intf,"random",b);config_SaveConfigFile(p_intf);});
-        }else if(page==6){
-            auto equalizer=new Equalizer(p_intf,content);layout->addWidget(equalizer);
-            for(QSlider *slider:equalizer->findChildren<QSlider*>())if(slider->orientation()==Qt::Vertical)slider->setMinimumHeight(260);
-            for(QLabel *label:equalizer->findChildren<QLabel*>())label->setFont(QApplication::font());
-            connect(equalizer,&Equalizer::configChanged,this,[this](const QString &name,const QVariant &value){
-                if(value.type()==QVariant::String)config_PutPsz(p_intf,qtu(name),qtu(value.toString()));
-                else if(value.userType()==QMetaType::Double||value.userType()==QMetaType::Float)config_PutFloat(p_intf,qtu(name),value.toDouble());
-                else config_PutInt(p_intf,qtu(name),value.toInt());
-                config_SaveConfigFile(p_intf);
-            });
-        }else if(page==7){
-            auto delay=new QDoubleSpinBox;delay->setObjectName("subtitleDelay");delay->setDecimals(3);delay->setRange(-600,600);delay->setSingleStep(.1);delay->setSuffix(" s");form->addRow("Subtitle track delay",delay);
-            auto updateDelay=[this,delay]{QSignalBlocker blocked(delay);auto input=THEMIM->getInput();delay->setEnabled(input!=nullptr);delay->setValue(input?var_GetInteger(input,"spu-delay")/double(CLOCK_FREQ):0);};
-            updateDelay();connect(THEMIM,&MainInputManager::inputChanged,delay,[updateDelay](bool){updateDelay();});connect(THEMIM->getIM(),&InputManager::synchroChanged,delay,updateDelay);
-            connect(delay,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this](double v){if(THEMIM->getInput())var_SetInteger(THEMIM->getInput(),"spu-delay",llround(v*CLOCK_FREQ));});
-            auto add=new QPushButton("Load subtitle file");form->addRow(add);connect(add,&QPushButton::clicked,THEAM,[this]{THEAM->doAction(OPEN_SUB_ACTION);});
-            auto sync=new QPushButton("Track synchronization and subtitle controls");layout->addWidget(sync);connect(sync,&QPushButton::clicked,THEDP,&DialogsProvider::extendedDialog);
-        }else if(page==8){
-            const QStringList mediaSections=QStringList()<<"Videos"<<"Music";
-            for(const QString &s:mediaSections){
-                auto choose=new QPushButton("Choose "+s.toLower()+" folder");form->addRow(choose);connect(choose,&QPushButton::clicked,this,[this,s]{QString d=QFileDialog::getExistingDirectory(settingsDialog,"Choose "+s+" folder");if(!d.isEmpty())getSettings()->setValue("Redesign/"+s+"Directory",d);});
-            }
-        }else if(page==11){
-            auto text=new QLabel("Reframe 3.0.24\nAn unofficial VLC media player fork.\n\nPlayback engine and original application: VideoLAN and VLC authors.\nGPL v2 or later, with the licenses of bundled dependencies.\n\nInterface adapted from VLC Redesign by Juxtopposed.\nDesign licensed under Creative Commons Attribution 4.0.\nNative implementation and interface changes: webmaster94, 2026.\n\nThis application is not endorsed by VideoLAN or Juxtopposed.");text->setWordWrap(true);layout->addWidget(text);
-            auto links=new QLabel("<a href='https://github.com/webmaster94/vlc-redesign'>Source and build scripts</a><br><a href='https://www.figma.com/community/file/1691465999134370980/vlc-redesign'>Original design</a><br><a href='https://creativecommons.org/licenses/by/4.0/'>CC BY 4.0</a>");links->setOpenExternalLinks(true);layout->addWidget(links);
-        }
-        if(page!=11){auto advanced=new QPushButton("Advanced Options");layout->addWidget(advanced);connect(advanced,&QPushButton::clicked,THEDP,&DialogsProvider::prefsDialog);}
-        if(page==5||page==9||page==10){auto effects=new QPushButton(page==5?"Video effects and filters":page==9?"Open network stream":"Effects, synchronization and recording controls");layout->insertWidget(2,effects);connect(effects,&QPushButton::clicked,this,[this,page]{if(page==9)THEDP->openNetDialog();else THEDP->extendedDialog();});}
-        layout->addStretch();scroll->setWidget(content);stack->addWidget(scroll);
-    }
-    connect(nav,&QListWidget::currentRowChanged,stack,&QStackedWidget::setCurrentIndex);nav->setCurrentRow(selectedPage);
-    auto close=new QPushButton("Close");auto buttons=new QHBoxLayout;buttons->addStretch();buttons->addWidget(close);root->addLayout(buttons);connect(close,&QPushButton::clicked,settingsDialog,&QDialog::close);
-    settingsDialog->show();
+    Reframe::reveal(settingsDialog);
 }
 
 /* An opt-in integration check drives the actual widgets and checks VLC state.
@@ -472,17 +433,20 @@ void RedesignShell::runSmoke(const QString &reportPath)
     const QStringList parts=elapsed->text().split(':');
     if(parts.size()!=3||parts[0].toInt()!=0||parts[1].toInt()!=0||parts[2].toInt()>30){report("FAIL: elapsed-time units");return;}
     playButton->click();
-    QTimer::singleShot(250,this,[this,report]{
+    QTimer::singleShot(250,this,[this,report,reportPath]{
         auto input=THEMIM->getInput();
         if(!input||var_GetInteger(input,"state")!=PAUSE_S){report("FAIL: pause control");return;}
         playButton->click();seek->setValue(30000);
-        QTimer::singleShot(250,this,[this,report]{
+        QTimer::singleShot(250,this,[this,report,reportPath]{
             auto input=THEMIM->getInput();
             if(!input||var_GetInteger(input,"state")!=PLAYING_S){report("FAIL: resume control");return;}
             if(std::abs(var_GetFloat(input,"position")-.3f)>.1f){report("FAIL: seek control");return;}
-            showLibrary("Playlists");
-            if(!window->isPlaylistVisible()){report("FAIL: playlist control");return;}
-            window->togglePlaylist();
+            showQueue();
+            auto queue=sidePanel?sidePanel->findChild<QListWidget *>("queueItems"):nullptr;
+            if(!queue){report("FAIL: redesigned queue control");return;}
+            sidePanel->show();updateQueue();
+            if(queue->count()==0){report("FAIL: queue backend contents");return;}
+            sidePanel->hide();
             openSettings(0);openSettings(6);
             auto nav=settingsDialog->findChild<QListWidget *>("settingsNav");
             if(!nav||nav->currentRow()!=6){report("FAIL: settings navigation");return;}
@@ -490,12 +454,22 @@ void RedesignShell::runSmoke(const QString &reportPath)
             if(!preamp){report("FAIL: equalizer widget");return;}
             preamp->setValue(73);
             if(std::abs(config_GetFloat(p_intf,"equalizer-preamp")-7.3f)>.05f){report("FAIL: equalizer config type");return;}
-            openSettings(7);auto delay=settingsDialog->findChild<QDoubleSpinBox *>("subtitleDelay");
+            auto eq=settingsDialog->findChild<QAbstractButton *>("filter:equalizer");
+            if(!eq){report("FAIL: audio filter control");return;}eq->setChecked(true);
+            char *chain=config_GetPsz(p_intf,"audio-filter");const bool saved=QString::fromUtf8(chain?chain:"").split(':').contains("equalizer");free(chain);
+            if(!saved){report("FAIL: audio filter persistence");return;}
+            openMediaSettings(7);auto delay=sidePanel->findChild<QDoubleSpinBox *>("subtitleDelay");
             if(!delay||!delay->isEnabled()){report("FAIL: subtitle control state");return;}
             delay->setValue(.25);
             if(var_GetInteger(THEMIM->getInput(),"spu-delay")!=CLOCK_FREQ/4){report("FAIL: subtitle delay units");return;}
-            openSettings(6);
-            QTimer::singleShot(250,this,[report]{report("PASS: elapsed time, pause, resume, seek, playlist, settings navigation, equalizer float persistence, subtitle synchronization");});
+            sidePanel->hide();
+            auto index=std::make_shared<int>(0);auto capture=std::make_shared<std::function<void()>>();
+            *capture=[this,report,index,capture,reportPath]{
+                if(*index<13){openSettings(*index);settingsDialog->layout()->activate();settingsDialog->grab().save(reportPath+QString(".page%1.png").arg(*index));++*index;QTimer::singleShot(100,this,*capture);return;}
+                openSettings(6);*capture=nullptr;
+                report("PASS: elapsed time, pause, resume, seek, redesigned queue, 13 settings pages, equalizer gain and filter persistence, live subtitle synchronization");
+            };
+            QTimer::singleShot(100,this,*capture);
         });
     });
 }
