@@ -182,7 +182,9 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     auto navToggle=button("list");navToggle->setToolTip("Toggle navigation sidebar");title->addWidget(navToggle);
     connect(navToggle,&QToolButton::clicked,this,[this]{setNavigationWidth(!compact);});
     title->addStretch();auto titleLabel=new QLabel("Reframe");titleLabel->setObjectName("windowTitle");title->addWidget(titleLabel);title->addStretch();
-    for(const QString &name:QStringList()<<"minimize"<<"maximize"<<"fullscreen"<<"close"){
+    // operator<< returns a reference. Own the list before range iteration.
+    const QStringList windowActions=QStringList()<<"minimize"<<"maximize"<<"fullscreen"<<"close";
+    for(const QString &name:windowActions){
         auto b=button(name);title->addWidget(b);
         connect(b,&QToolButton::clicked,this,[this,name]{if(name=="minimize")window->showMinimized();else if(name=="maximize"){if(window->isMaximized())window->showNormal();else window->showMaximized();}else if(name=="fullscreen")window->toggleInterfaceFullScreen();else window->close();});
     }
@@ -403,7 +405,8 @@ void RedesignShell::openSettings(int selectedPage)
             auto theme=new QComboBox;theme->addItems(QStringList()<<"Dark"<<"Light"<<"System");theme->setCurrentText(getSettings()->value("Redesign/theme","Dark").toString());form->addRow("Theme",theme);
             connect(theme,&QComboBox::currentTextChanged,this,[this](const QString &value){getSettings()->setValue("Redesign/theme",value);applyTheme();});
             auto colors=new QWidget;auto colorRow=new QHBoxLayout(colors);colorRow->setContentsMargins(0,0,0,0);
-            for(const QString &color:QStringList()<<"#d98214"<<"#c64d3d"<<"#c4a12e"<<"#2caa52"<<"#249dbc"<<"#3b74dd"<<"#9747ff"<<"#e349b4"<<"#b8b8b8"){
+            const QStringList accentColors=QStringList()<<"#d98214"<<"#c64d3d"<<"#c4a12e"<<"#2caa52"<<"#249dbc"<<"#3b74dd"<<"#9747ff"<<"#e349b4"<<"#b8b8b8";
+            for(const QString &color:accentColors){
                 auto b=new QPushButton;b->setFixedSize(30,30);b->setToolTip(color);b->setStyleSheet("QPushButton {background:"+color+";border:0;border-radius:3px;}");colorRow->addWidget(b);connect(b,&QPushButton::clicked,this,[this,color]{getSettings()->setValue("Redesign/accent",color);applyTheme();});
             }form->addRow("Accent color",colors);
             auto text=new QLabel("Appearance changes apply immediately. Other VLC preferences remain available in Advanced Options.");text->setWordWrap(true);layout->addWidget(text);
@@ -436,7 +439,8 @@ void RedesignShell::openSettings(int selectedPage)
             auto add=new QPushButton("Load subtitle file");form->addRow(add);connect(add,&QPushButton::clicked,THEAM,[this]{THEAM->doAction(OPEN_SUB_ACTION);});
             auto sync=new QPushButton("Track synchronization and subtitle controls");layout->addWidget(sync);connect(sync,&QPushButton::clicked,THEDP,&DialogsProvider::extendedDialog);
         }else if(page==8){
-            for(const QString &s:QStringList()<<"Videos"<<"Music"){
+            const QStringList mediaSections=QStringList()<<"Videos"<<"Music";
+            for(const QString &s:mediaSections){
                 auto choose=new QPushButton("Choose "+s.toLower()+" folder");form->addRow(choose);connect(choose,&QPushButton::clicked,this,[this,s]{QString d=QFileDialog::getExistingDirectory(settingsDialog,"Choose "+s+" folder");if(!d.isEmpty())getSettings()->setValue("Redesign/"+s+"Directory",d);});
             }
         }else if(page==11){

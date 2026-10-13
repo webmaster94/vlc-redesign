@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/build-validation"
-          python3 ../extras/package/redesign/package.py --payload win64/vlc-3.0.24 --output "$GITHUB_WORKSPACE/dist"
+          python3 ../extras/package/redesign/package.py --payload win64/vlc-3.0.24 --licenses contrib/x86_64-w64-mingw32/share/licenses --output "$GITHUB_WORKSPACE/dist"
           cd "$GITHUB_WORKSPACE"
           git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r1-source.tar.xz
           cp doc/redesign/credits.txt dist/CREDITS.txt
@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/build-validation/contrib/contrib-win64"
-          make -j4 fetch-all 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
+          make -j4 fetch PKGS_FOUND= 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
           cd "$GITHUB_WORKSPACE"
           tar -cJf dist/Reframe-3.0.24-r1-dependency-source.tar.xz -C contrib tarballs
           sha256sum dist/*source.tar.xz >> dist/SHA256SUMS

@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--payload", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--licenses", required=True, type=Path)
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[3]
     payload, output = args.payload.resolve(), args.output.resolve()
@@ -38,6 +39,9 @@ def main():
     shutil.copy2(repo / "doc/redesign/credits.txt", stage / "CREDITS.txt")
     shutil.copy2(repo / "README.md", stage / "FORK-README.txt")
     shutil.copytree(repo / "extras/package/redesign/fonts", stage / "fonts")
+    if not args.licenses.is_dir():
+        parser.error("Matching dependency license directory is required")
+    shutil.copytree(args.licenses, stage / "licenses")
     strip = shutil.which("x86_64-w64-mingw32-strip")
     if strip:
         for binary in sorted(stage.rglob("*")):
