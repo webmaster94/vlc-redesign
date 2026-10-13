@@ -588,7 +588,7 @@ static void *ThreadPlatform( void *obj, char *platform_name )
     char *cConfigDir = config_GetUserDir( VLC_CONFIG_DIR );
     QString configDir = cConfigDir;
     free( cConfigDir );
-    // Reframe stores Qt settings beside its isolated core preferences.
+    // Reframe's isolated Qt settings path, changed 2026-10-12.
     if( configDir.endsWith( "\\Reframe" ) )
         configDir.chop( 8 );
     QSettings::setPath( QSettings::IniFormat, QSettings::UserScope, configDir );

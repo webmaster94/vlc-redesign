@@ -36,6 +36,12 @@ def main():
     shutil.copy2(repo / "COPYING.LIB", stage / "COPYING.LIB.txt")
     shutil.copy2(repo / "doc/redesign/credits.txt", stage / "CREDITS.txt")
     shutil.copy2(repo / "README.md", stage / "FORK-README.txt")
+    shutil.copytree(repo / "extras/package/redesign/fonts", stage / "fonts")
+    strip = shutil.which("x86_64-w64-mingw32-strip")
+    if strip:
+        for binary in sorted(stage.rglob("*")):
+            if binary.suffix.lower() in (".exe", ".dll"):
+                subprocess.run([strip, "--strip-unneeded", str(binary)], check=True)
     files = sorted(p for p in stage.rglob("*") if p.is_file())
     install, uninstall = [], []
     directories = set()

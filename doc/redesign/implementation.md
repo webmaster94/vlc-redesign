@@ -12,13 +12,13 @@ Checked 12 October 2026.
 
 ## Design access
 
-The [Figma Community page](https://www.figma.com/community/file/1691465999134370980/vlc-redesign) identifies Juxtopposed as the creator and displays CC BY 4.0. Its cover is a promotional image, not a usable interface specification. The embedded design canvas remained blank, and the available browser could not capture its screenshot. Opening the Community canvas did not provide inspectable frames. Implementation is waiting for an accessible design file or exported screens; no layout has been invented from the cover image.
+The [Figma Community page](https://www.figma.com/community/file/1691465999134370980/vlc-redesign) identifies Juxtopposed as the creator and displays CC BY 4.0. The initial canvas did not load. The user then supplied 25 exported PNGs and a view-only copy link. Its prototype was readable, and local raw `.fig` data was decoded for measurements and transition settings. That resolved the access issue.
 
-Before implementation, inventory the player, library, playlists, settings, menus, compact view, fullscreen view, and their empty/loading/error states actually present in the design. Record dimensions, spacing, colors, type sizes, assets, and interactions. Review any font/icon/artwork licenses separately. Use actual user media metadata and thumbnails in place of illustrative commercial cover art.
+Implemented views include the player, folder library, recent media, playlist access, global settings, audio equalizer, subtitle synchronization, and dark/light/system themes with nine accent choices. The sidebar uses a 300 ms cubic transition measured from the prototype. Advanced VLC dialogs retain their established controls with the new palette. Media cards use real file names and locally generated thumbnails; example media artwork is not copied.
 
 ## Interface approach
 
-VLC 3.0.24 has a native Qt Widgets interface in `modules/gui/qt`. Its `MainInterface`, input manager, controls, and playlist components already connect to VLC's playback engine. Prefer adapting those components so opening files, playback, subtitles, audio devices, streaming, hotkeys, and the advanced dialogs keep their existing behavior. Choose the final component structure after inspecting the design.
+`modules/gui/qt/redesign.cpp` adds a native shell around VLC's video widget and playlist. Transport controls connect to `InputManager`, `MainInputManager`, and `ActionsManager`; opening media uses the existing `Open` helper. The library scans selected folders and recent media, and generates thumbnails through an isolated dummy-interface VLC subprocess. The existing equalizer supplies live gain and preset controls.
 
 The `master` branch is a development version and has a different interface architecture. Starting from a stable tag avoids making the installable fork depend on unreleased VLC changes. This choice can be revisited if the design requires library capabilities absent from 3.0.
 
@@ -29,20 +29,20 @@ Use VideoLAN's [existing Windows build script](../../extras/package/win32/build.
 - Image: `registry.videolan.org/vlc-debian-win64-3.0:20260820114402`.
 - Prebuilt dependency revision: `910cc9cada6080dd777fbafb2ebdd0c24f702c30`.
 
-The workflow is compilation validation only. It does not establish playback correctness, installer correctness, or redistribution compliance. Recompute and verify the dependency selection if upstream dependencies or their build configuration change.
+The workflow compiles, packages, gathers dependency source, and runs Windows integration checks. These are development checks, not a substitute for long-term playback testing. Recompute and verify dependency selection if dependencies or their build configuration change.
 
 ## Installer work
 
-Adapt `extras/package/win32/NSIS/vlc.win32.nsi.in` and its helpers. Preserve VLC's welcome, license, components, destination, installation, finish, maintenance, and uninstall flows.
+`extras/package/redesign/installer.nsi` uses NSIS Modern UI 2, as does VLC's installer. It provides welcome, GPL license, components, destination, installation, finish, and uninstall pages. Reinstallation overwrites packaged files in the fork's own directory.
 
-Before producing a distributable installer:
+Distribution choices implemented in this fork:
 
-- Set a distinct product name, icon, publisher description, installation folder, uninstall identity, application registration, ProgIDs, context-menu entries, and autoplay handlers.
-- Isolate the core configuration, Qt settings, cache, crash paths, and single-instance behavior from stock VLC.
-- Prevent the stock VLC updater from replacing the fork with an upstream installer. Either disable it or implement a fork-specific update mechanism.
-- Avoid registering stock VLC ActiveX/NPAPI components and remove installer cleanup which targets old upstream browser plugins.
-- Make file associations an explicit component choice and preserve existing association owners.
-- Keep install/uninstall operations scoped to the fork's own files and registry entries.
-- Include license notices, design credit, and corresponding source for the exact binary and bundled dependencies.
+- Reframe name, original icon, unofficial publisher description, independent installation directory and uninstall identity, and optional Open With ProgIDs.
+- Separate core/Qt preferences, cache, crash directory, IPC names, and Windows audio-session GUID.
+- Disabled upstream installer updater.
+- No ActiveX/NPAPI registration or legacy upstream-browser cleanup.
+- Optional Open With entries which preserve default owners.
+- Explicit file install/delete manifests, with no recursive uninstall deletion.
+- License texts, design credit, Inter font license, exact fork source, and corresponding dependency source.
 
 Validate a fresh install, upgrade of the fork, uninstall, and coexistence with stock VLC in an isolated Windows environment. Confirm the official installation, preferences, and associations survive those operations. Smoke-test playback, seeking, pause/resume, volume, fullscreen, subtitles, audio tracks, playlists, and opening paths with spaces/non-ASCII characters. An unsigned installer is possible; signing requires a separate signing identity and does not follow from VideoLAN's signature.

@@ -281,6 +281,7 @@ static char *config_GetAppDir (void)
     char *psz_dir;
     char *psz_parent = config_GetShellDir (CSIDL_APPDATA);
 
+    /* Reframe's separate preferences/cache directory, changed 2026-10-12. */
     if (psz_parent == NULL
      ||  asprintf (&psz_dir, "%s\\Reframe", psz_parent) == -1)
         psz_dir = NULL;

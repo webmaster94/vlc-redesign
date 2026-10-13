@@ -40,6 +40,7 @@ svlc
 cvlc
 qvlc
 mvlc
+__pycache__/
 nvlc
 wxvlc
 vlc_install_dir/*

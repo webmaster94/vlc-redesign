@@ -496,7 +496,7 @@ fi
 if [ -n "$DISABLEGUI" ]; then
     CONFIGFLAGS="$CONFIGFLAGS --disable-vlc --disable-qt --disable-skins2"
 else
-    # Reframe must not offer the official VLC installer as a fork update.
+    # Reframe disables the upstream installer updater, changed 2026-10-12.
     CONFIGFLAGS="$CONFIGFLAGS --enable-qt --enable-skins2 --disable-update-check"
 fi
 if [ -n "$WINSTORE" ]; then

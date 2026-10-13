@@ -1,6 +1,7 @@
 CLEANFILES = skins2/default.vlt
 MOSTLYCLEANFILES =
 EXTRA_DIST =
+EXTRA_DIST += icons/reframe.ico
 
 desktopdir = $(datadir)/applications
 if !HAVE_WIN32

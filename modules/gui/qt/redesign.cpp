@@ -49,6 +49,9 @@
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QDesktopServices>
+#include <QPropertyAnimation>
+#include <QFontDatabase>
+#include <QSizeGrip>
 #include <cmath>
 #include <algorithm>
 
@@ -119,9 +122,16 @@ class MediaDelegate : public QStyledItemDelegate
 {
 public:
     explicit MediaDelegate(QObject *p):QStyledItemDelegate(p) {}
-    QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override {return QSize(220,162);}
+    QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override {
+        const auto view=qobject_cast<QListWidget *>(parent());
+        return QSize(220,view&&view->viewMode()==QListView::ListMode?56:162);
+    }
     void paint(QPainter *p,const QStyleOptionViewItem &o,const QModelIndex &i) const override {
         p->save();p->setRenderHint(QPainter::Antialiasing);
+        if(o.rect.height()<100){
+            QIcon icon=qvariant_cast<QIcon>(i.data(Qt::DecorationRole));icon.paint(p,QRect(o.rect.left()+8,o.rect.top()+4,70,40));
+            p->setPen(o.palette.text().color());p->drawText(o.rect.adjusted(92,0,-8,0),Qt::AlignVCenter|Qt::AlignLeft,i.data().toString());p->restore();return;
+        }
         QRect r=o.rect.adjusted(8,6,-8,-6), image(r.left(),r.top(),r.width(),110);
         p->setPen(Qt::NoPen);p->setBrush(o.state&QStyle::State_Selected?o.palette.highlight():o.palette.alternateBase());p->drawRoundedRect(image,8,8);
         QIcon icon=qvariant_cast<QIcon>(i.data(Qt::DecorationRole));
@@ -155,6 +165,9 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     :QWidget(w),p_intf(intf),window(w),player(panel),settingsDialog(nullptr),historyPosition(-1),
       systemPalette(QApplication::palette()),thumbnailProcess(nullptr),compact(false),minimal(false)
 {
+    navigationAnimation=nullptr;
+    const QDir fonts(QCoreApplication::applicationDirPath()+"/fonts");
+    for(const QString &f:fonts.entryList(QStringList()<<"*.ttf",QDir::Files))QFontDatabase::addApplicationFont(fonts.filePath(f));
     setObjectName("redesignShell");
     char *cache=config_GetUserDir(VLC_CACHE_DIR);cacheDirectory=QString::fromUtf8(cache?cache:"");free(cache);
     cacheDirectory+="/thumbnails";QDir().mkpath(cacheDirectory);
@@ -224,6 +237,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     auto eq=button("audio"),sub=button("subtitles"),settings=button("settings"),playlist=button("playlist");bar->addWidget(eq);bar->addWidget(sub);bar->addWidget(settings);bar->addWidget(playlist);
     eq->setToolTip("Audio effects");sub->setToolTip("Subtitles and synchronization");settings->setToolTip("Settings");playlist->setToolTip("Playlist");
     connect(eq,&QToolButton::clicked,this,[this]{openSettings(6);});connect(sub,&QToolButton::clicked,this,[this]{openSettings(7);});connect(settings,&QToolButton::clicked,this,[this]{openSettings();});connect(playlist,&QToolButton::clicked,this,[this]{showLibrary("Playlists");});
+    bar->addWidget(new QSizeGrip(window));
     root->addWidget(transport);
     connect(THEMIM,&MainInputManager::inputChanged,this,[this](bool has){if(has)showPlayer();else{seek->setEnabled(false);QSignalBlocker blocked(seek);seek->setValue(0);}});
     connect(THEMIM->getIM(),&InputManager::nameChanged,this,[titleLabel](const QString &name){titleLabel->setText(name.isEmpty()?"Reframe":name);});
@@ -241,7 +255,7 @@ void RedesignShell::applyTheme()
     const QString bg=light?"#f5f5f5":"#0e0e0e",panel=light?"#e9e9e9":"#191919",text=light?"#303030":"#b8b8b8",line=light?"#d0d0d0":"#292929";
     QApplication::setStyle("Fusion");QPalette p=systemPalette;
     p.setColor(QPalette::Window,QColor(bg));p.setColor(QPalette::Base,QColor(bg));p.setColor(QPalette::AlternateBase,QColor(panel));p.setColor(QPalette::Button,QColor(panel));p.setColor(QPalette::Text,QColor(text));p.setColor(QPalette::WindowText,QColor(text));p.setColor(QPalette::ButtonText,QColor(text));p.setColor(QPalette::Highlight,QColor(accent));p.setColor(QPalette::HighlightedText,QColor("#101010"));p.setColor(QPalette::Disabled,QPalette::Text,QColor("#727272"));QApplication::setPalette(p);
-    QApplication::setFont(QFont("Segoe UI",10));
+    QApplication::setFont(QFont(QFontDatabase().families().contains("Inter")?"Inter":"Segoe UI",10));
     QString css=QString(
         "QWidget { color:%1; } QWidget#redesignShell, QWidget#browser, QDialog { background:%2; }"
         "QWidget#titleBar, QWidget#navigation, QWidget#transport { background:%3; } QWidget#navigation { border-radius:7px; }"
@@ -274,10 +288,17 @@ void RedesignShell::applyTheme()
 
 void RedesignShell::setNavigationWidth(bool collapse)
 {
-    compact=collapse;sidebar->setFixedWidth(collapse?48:196);
+    if(compact==collapse&&sidebar->width()==(collapse?48:196))return;
+    compact=collapse;
+    if(navigationAnimation){navigationAnimation->stop();navigationAnimation->deleteLater();}
+    sidebar->setMinimumWidth(48);
+    navigationAnimation=new QPropertyAnimation(sidebar,"maximumWidth",this);
+    navigationAnimation->setStartValue(sidebar->width());navigationAnimation->setEndValue(collapse?48:196);
+    navigationAnimation->setDuration(300);navigationAnimation->setEasingCurve(QEasingCurve::InOutCubic);
+    navigationAnimation->start();
     for(QToolButton *b:sidebar->findChildren<QToolButton*>())b->setToolButtonStyle(collapse?Qt::ToolButtonIconOnly:Qt::ToolButtonTextBesideIcon);
 }
-void RedesignShell::showPlayer(){pages->setCurrentWidget(player);setNavigationWidth(true);}
+void RedesignShell::showPlayer(){pages->setCurrentWidget(player);setNavigationWidth(getSettings()->value("Redesign/compactOnPlayback",true).toBool());}
 void RedesignShell::setMinimal(bool m){minimal=m;header->setVisible(!m);sidebar->setVisible(!m);transport->setVisible(!m);if(m)showPlayer();}
 
 void RedesignShell::showLibrary(const QString &name)
@@ -360,10 +381,13 @@ void RedesignShell::openSettings(int selectedPage)
     settingsDialog=new QDialog(window);settingsDialog->setAttribute(Qt::WA_DeleteOnClose);settingsDialog->setWindowTitle("Reframe settings");settingsDialog->resize(1000,740);
     connect(settingsDialog,&QObject::destroyed,this,[this]{settingsDialog=nullptr;});
     auto root=new QVBoxLayout(settingsDialog);root->setContentsMargins(16,16,16,16);root->setSpacing(16);
-    auto heading=new QLabel("Global Settings");heading->setObjectName("sectionHeading");root->addWidget(heading);
+    auto settingsHeader=new QHBoxLayout;
+    auto filter=new QLineEdit;filter->setPlaceholderText("Search settings");filter->setFixedWidth(208);settingsHeader->addWidget(filter);
+    auto heading=new QLabel("Global Settings");heading->setObjectName("sectionHeading");settingsHeader->addWidget(heading,1);root->addLayout(settingsHeader);
     auto row=new QHBoxLayout;auto nav=new QListWidget;nav->setObjectName("settingsNav");nav->setFixedWidth(208);
     const QStringList labels=QStringList()<<"General"<<"Interface"<<"Privacy"<<"Controls"<<"Playback"<<"Video"<<"Audio"<<"Subtitles"<<"Library"<<"Network"<<"Advanced"<<"About";
     nav->addItems(labels);row->addWidget(nav);auto stack=new QStackedWidget;row->addWidget(stack,1);root->addLayout(row,1);
+    connect(filter,&QLineEdit::textChanged,nav,[nav](const QString &text){for(int i=0;i<nav->count();++i)nav->item(i)->setHidden(!nav->item(i)->text().contains(text,Qt::CaseInsensitive));});
     for(int page=0;page<labels.size();++page){
         auto scroll=new QScrollArea;scroll->setWidgetResizable(true);auto content=new QWidget;auto layout=new QVBoxLayout(content);layout->setContentsMargins(24,4,24,24);layout->setSpacing(18);
         auto pageTitle=new QLabel(labels[page]);pageTitle->setObjectName("sectionHeading");layout->addWidget(pageTitle);
@@ -377,7 +401,7 @@ void RedesignShell::openSettings(int selectedPage)
             }form->addRow("Accent color",colors);
             auto text=new QLabel("Appearance changes apply immediately. Other VLC preferences remain available in Advanced Options.");text->setWordWrap(true);layout->addWidget(text);
         }else if(page==1){
-            auto hide=new QCheckBox("Compact navigation while playing");hide->setChecked(true);form->addRow(hide);connect(hide,&QCheckBox::toggled,this,[this](bool on){setNavigationWidth(on);});
+            auto hide=new QCheckBox("Compact navigation while playing");hide->setChecked(getSettings()->value("Redesign/compactOnPlayback",true).toBool());form->addRow(hide);connect(hide,&QCheckBox::toggled,this,[this](bool on){getSettings()->setValue("Redesign/compactOnPlayback",on);if(pages->currentWidget()==player)setNavigationWidth(on);});
             auto top=new QCheckBox("Always on top");top->setChecked(window->isInterfaceAlwaysOnTop());form->addRow(top);connect(top,&QCheckBox::toggled,window,&MainInterface::setInterfaceAlwaysOnTop);
         }else if(page==2){
             auto network=new QCheckBox("Allow metadata network access");network->setChecked(config_GetInt(p_intf,"metadata-network-access"));form->addRow(network);connect(network,&QCheckBox::toggled,this,[this](bool b){config_PutInt(p_intf,"metadata-network-access",b);var_SetBool(p_intf->obj.libvlc,"metadata-network-access",b);config_SaveConfigFile(p_intf);});

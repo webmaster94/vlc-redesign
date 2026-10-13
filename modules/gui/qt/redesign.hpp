@@ -20,6 +20,7 @@ class QToolButton;
 class QSlider;
 class QProcess;
 class QDialog;
+class QPropertyAnimation;
 
 class RedesignShell : public QWidget
 {
@@ -65,6 +66,7 @@ private:
     QString cacheDirectory;
     bool compact;
     bool minimal;
+    QPropertyAnimation *navigationAnimation;
 
     QToolButton *button(const QString &icon, const QString &text = QString());
     void refresh();

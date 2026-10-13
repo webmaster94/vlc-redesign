@@ -25,6 +25,8 @@
 #ifndef QVLC_MAIN_INTERFACE_H_
 #define QVLC_MAIN_INTERFACE_H_
 
+// Reframe shell integration, changed 2026-10-12.
+
 #include "qt.hpp"
 
 #include "util/qvlcframe.hpp"

@@ -35,6 +35,15 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r1-source.tar.xz
           cp doc/redesign/credits.txt dist/CREDITS.txt
+      - name: Gather corresponding dependency source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/build-validation/contrib/contrib-win64"
+          make -j4 fetch-all 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
+          cd "$GITHUB_WORKSPACE"
+          tar -cJf dist/Reframe-3.0.24-r1-dependency-source.tar.xz -C contrib tarballs
+          sha256sum dist/*source.tar.xz >> dist/SHA256SUMS
       - name: Keep installer and portable player
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -55,5 +64,24 @@ jobs:
           path: |
             build-validation/build.log
             build-validation/win64/config.log
+            build-validation/dependency-source.log
           if-no-files-found: warn
           retention-days: 14
+  windows-smoke:
+    needs: win64
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: reframe-windows-x64
+          path: artifacts
+      - name: Check rendering playback and installer isolation
+        shell: pwsh
+        run: ./extras/package/redesign/smoke.ps1 -Artifacts ./artifacts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reframe-windows-preview
+          path: artifacts/preview.png
