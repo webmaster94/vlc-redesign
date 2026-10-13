@@ -44,6 +44,17 @@ class RedesignPreferences : public Reframe::Dialog
     ~RedesignPreferences();
     void selectPage(int);
     void restore(const QVariantMap &);
+    void editShortcuts()
+    {
+        shortcuts();
+    }
+    void manageProfiles()
+    {
+        profiles();
+    }
+    void saveAppProfile(const QString &);
+    int currentPage() const;
+    void openAdvanced(int);
     static QStringList categories();
 };
 #endif

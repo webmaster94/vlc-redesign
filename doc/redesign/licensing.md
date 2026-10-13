@@ -1,6 +1,6 @@
-# VLC redesign licensing findings
+# Reframe licensing and public distribution
 
-Checked 12 October 2026 against primary sources. This note covers source and installer redistribution, branding, and the linked Figma design.
+Reviewed 12-13 October 2026 against primary sources and the pinned Windows dependency build. Public hosting of this fork is permitted. The combined Reframe release uses GPL-3.0-or-later, with retained notices for its separately licensed dependencies and Juxtopposed's CC BY 4.0 design.
 
 ## Public hosting is allowed by VLC's license
 
@@ -12,17 +12,30 @@ Private modification and internal use do not force public publication. Binary di
 
 GitHub's standard forks of public repositories are public, and their visibility cannot be changed independently. Private work would use a separate private repository or local clone rather than a normal private GitHub fork of `videolan/vlc`. [GitHub fork visibility](https://docs.github.com/en/pull-requests/reference/forks#visibility-of-forks).
 
-## What to ship with an installer
+## Combined application license
 
-Under GPLv2 sections 1-3 and 6:
+Reframe's release policy is GPL-3.0-or-later for the combined application and the new native redesign implementation. Original VLC headers, copyright notices, and dependency licenses remain intact. The later-version grant in VLC's GPL-2.0-or-later source permits using GPLv3 for the combined program; this is a permitted license-version choice, not a claim to own or rewrite upstream copyright. [FSF GPL compatibility FAQ](https://www.gnu.org/licenses/gpl-faq.en.html#v2v3Compatibility), [upstream GPL text, section 9](https://raw.githubusercontent.com/videolan/vlc/master/COPYING).
 
-- Keep copyright, license, and warranty notices, and provide the GPL text.
-- Mark modified files with notices of the changes and their dates.
-- License the distributed derivative player under the GPL without extra restrictions on recipients.
-- Provide complete corresponding source for the exact distributed build. This includes the source of its modules, interface definitions, and compilation and installation scripts, with the license's system-component exception.
-- Equivalent source-download access alongside the binary download is an allowed approach. A three-year written offer is another option, but placing a source archive beside each installer is simpler.
+The FSF expressly states that a CC BY 4.0 work can be combined with GPLv3 material and the resulting larger work distributed under GPLv3. This gives the design adaptation a direct, documented compatibility basis. The FSF's current license list also describes CC BY 4.0 as compatible with all GPL versions. Selecting GPLv3 here is a clear project policy, not an assertion that every GPLv2 use of CC BY 4.0 is prohibited. CC BY 4.0 should remain the stated license of the original design. [FSF licensing announcement](https://www.fsf.org/blogs/licensing/cc-by-4-0-and-cc-by-sa-4-0-added-to-our-list-of-free-licenses), [FSF license list](https://www.gnu.org/licenses/license-list.html.html#ccby).
 
-An upstream-only source link does not cover the fork's modifications. A GitHub release should carry the installer, the matching source snapshot, build and packaging scripts, and the necessary dependency source and notices. Verify the selected dependencies before settling the release's GPL version. [VLC's GPLv2 text](https://raw.githubusercontent.com/videolan/vlc/master/COPYING).
+This is CC BY, not CC BY-SA. BY-SA has different compatibility rules; its special one-way GPLv3 compatibility is not the license of this resource. [Figma resource](https://www.figma.com/community/file/1691465999134370980/vlc-redesign), [CC BY 4.0 legal code](https://creativecommons.org/licenses/by/4.0/legalcode.en).
+
+## What to ship with the GPLv3 installer
+
+The installer should display GPLv3 as the combined application's license. Preserve the original GPLv2 and LGPL texts as component notices. The packaging layout should include:
+
+- `COPYING.txt`: complete GNU GPLv3 text, used by the installer license page.
+- `COPYING.GPL2.txt`: original upstream GPLv2 text, retained for the original source notices.
+- `COPYING.LIB.txt`: original LGPLv2.1 text; include LGPLv3 where a bundled library uses it.
+- `CREDITS.txt`: VideoLAN/upstream credit, Juxtopposed/design attribution and adaptation notice, source/release links, and font attribution.
+- `licenses/`: the matching bundled libraries' license, copyright, and other required notices.
+- `fonts/LICENSE.txt`: the SIL Open Font License for the unmodified Inter fonts.
+
+Under GPLv3, preserve notices, identify modifications, supply the license, and provide Corresponding Source for the distributed build. Publish equivalent, free source-download access alongside the binary under section 6(d). Include the fork's source, matching dependency source, applied patches, and the build/installation scripts. Provide the preferred form for editing adapted design assets where those are part of Corresponding Source. An upstream-only link cannot substitute for the fork's modifications. [GNU GPLv3 text, sections 1, 5 and 6](https://opensource.org/license/gpl-3.0).
+
+The combined release and new redesign source should say `GPL-3.0-or-later`; unchanged upstream files keep their existing GPL-2.0-or-later, LGPL, or other headers. Include the GPLv3 text in the repository without deleting the original `COPYING` and `COPYING.LIB`. README, About, installed credits, and release notes should distinguish the combined-release license from those retained component licenses.
+
+This paragraph defines the packaging requirements for the new policy. It does not retroactively claim older installer artifacts already displayed GPLv3; rebuild the installer after updating its staged license text and notices.
 
 The existing Windows installer uses NSIS and Modern UI 2. Its script defines welcome, reinstall/update, GPL license, component-selection, destination, install, and finish pages. Reusing this packaging is a practical way to match the current installer. [Upstream NSIS installer](https://raw.githubusercontent.com/videolan/vlc/master/extras/package/win32/NSIS/vlc.win32.nsi.in).
 
@@ -44,11 +57,36 @@ Figma's official policy says free Community design files are published under CC 
 
 For this CC BY 4.0 design, credit Juxtopposed, retain supplied notices, link the original resource and CC BY 4.0, and state that the design was adapted into the application. Include that attribution in the repository and installed credits. CC BY 4.0 does not grant trademark or patent rights and covers only rights the licensor can grant; stock photos, album/movie artwork, fonts, and third-party icon sets need their own rights checked. Replace illustrative cover art with the user's media thumbnails or separately licensed placeholders. [CC BY 4.0 legal code, sections 2-3](https://creativecommons.org/licenses/by/4.0/legalcode.en).
 
-The FSF describes CC BY 4.0 as compatible with all GPL versions, while recommending against using Creative Commons licenses for software code. Use GPL notices on original implementation code and retain the design/asset attribution. [FSF license list, CC BY](https://www.gnu.org/licenses/license-list.html.html#ccby).
+The native redesign code uses GPL-3.0-or-later under the combined-release policy above. Keep the original design credit and CC BY 4.0 link. Copyright in the original design remains with its creator; implementing or adapting it does not erase the original license and attribution.
 
 Making the repository private does not by itself grant rights to bundled assets. The verified CC BY 4.0 license supports public adaptation with attribution. Review the design file or an authorized export for third-party asset credits before importing its artwork.
 
-## Remaining release work
+## Pinned Windows dependency compatibility check
 
-The VLC copyright terms and the verified Figma CC BY 4.0 license support a public fork and public installer release with the notices and source described above. The main agent created the public fork [webmaster94/vlc-redesign](https://github.com/webmaster94/vlc-redesign). Third-party assets in the design still need review. The main agent also verified the latest stable Windows x64 installer as VLC 3.0.24 in the [official download directory](https://download.videolan.org/pub/videolan/vlc/last/win64/). Before publishing binaries, also inventory the dependencies actually bundled. VideoLAN identifies libdvdcss distribution as legally controversial in some countries, including the United States, so GPL compliance alone is not a complete jurisdiction-specific clearance for every optional module. This note does not assert that hosting any possible VLC build is free of all patent, trademark, or other legal issues. [VideoLAN legal FAQ](https://docs.videolan.me/vlc-user/en/support/faq/legalconcerns.html#is-libdvdcss-legal).
+The workflow pins VideoLAN's Windows contrib artifact `vlc-contrib-x86_64-w64-mingw32-910cc9cada6080dd777fbafb2ebdd0c24f702c30.tar.zst`. On 13 October, the audit read the expanded prefix at `/root/vlc-redesign-build/prebuilt/x86_64-w64-mingw32`, its `.pc` versions and installed headers, and selected source notices from the matching dependency-source archive in `vlc-redesign-releases/v0.1.0`. The default contrib bootstrap enables both `GPL` and `GNUV3` and describes that combination as GPL version 3. [Pinned workflow](../../.github/workflows/redesign-build.yml), [contrib bootstrap](../../contrib/bootstrap), [prebuilt artifact](https://artifacts.videolan.org/vlc-3.0/win64/vlc-contrib-x86_64-w64-mingw32-910cc9cada6080dd777fbafb2ebdd0c24f702c30.tar.zst).
 
+No GPL-2.0-only compatibility blocker was found among the reviewed libraries in this build. The main GPL dependencies contain later-version grants, not merely a bare copy of the GPLv2 license document:
+
+| Reviewed dependency | Concrete primary evidence | GPLv3 conclusion |
+| --- | --- | --- |
+| x264, pinned `e067ab0b530395f90b578f6d05ab0a225e2efdf9` | Prebuilt `include/x264.h` and matching source headers specify GPLv2 or later | Later option permits GPLv3 |
+| x265 4.1 | Prebuilt `include/x265.h`, `x265_config.h`, and source headers specify GPLv2 or later | Later option permits GPLv3 |
+| FAAD2 2.11.3 | Prebuilt `include/faad.h` and source README/header notices specify GPLv2 or later | Later option permits GPLv3 |
+| libmad 0.16.4, libmpeg2 0.5.1 | Prebuilt `mad.h`, `mpeg2dec/mpeg2.h` and matching source notices specify GPLv2 or later | Later option permits GPLv3 |
+| a52dec 0.7.4, libdca 0.0.7 | Source `include/a52.h`, `include/dca.h` and implementation notices specify GPLv2 or later | Later option permits GPLv3 |
+| libdvdnav 6.1.1, libdvdread 6.1.3, libdvdcss 1.4.3 | Implementation/header notices in the source archives specify GPLv2 or later | Later option permits GPLv3 |
+| sidplay-libs 2.1.1, aribb24 1.0.3 | Library headers/implementation notices contain GNU later-version grants | No GPLv2-only restriction found |
+| FFmpeg libraries | Compiled `libavcodec.a`, `libavformat.a`, `libavutil.a` contain LGPL 2.1-or-later license identifiers; compiled `libpostproc.a` reports GPLv2-or-later | Compatible GNU license versions; preserve FFmpeg notices/source |
+| libsamplerate 0.1.9 | Archive `COPYING` contains a two-clause BSD grant | Compatible permissive license |
+| projectM 2.0.1 source | `COPYING` and `projectM.hpp` specify LGPLv2.1 or later | Compatible LGPL grant |
+| Qt 5.6.3 | Installed Qt headers provide LGPLv2.1/LGPLv3 alternatives | GPLv3 distribution supported under the appropriate LGPL terms |
+
+These records are evidence from the actual pinned dependencies, not a claim that every optional library which VLC could ever load has been cleared. Build tools that are separate executables need their own notices if redistributed, but their licenses do not automatically become the player's combined license. FFmpeg's official licensing page confirms its LGPLv2.1-or-later base and GPLv2-or-later optional portions. [FFmpeg licensing](https://ffmpeg.org/legal.html), [FSF compatibility matrix](https://www.gnu.org/licenses/gpl-faq.en.html#AllCompatibility).
+
+A source download or prebuilt prefix may contain libraries that the final player does not link. Keep matching versions, patches, build configuration, and notices for the libraries actually included in each release. Refresh this check when the pinned contrib changes. The release's dependency-source archive and collected notices provide the concrete audit material; this targeted compatibility check is not a byte-for-byte reproducibility certification.
+
+## Release conclusion
+
+A public GitHub fork and public installer distribution are permitted under the verified copyright licenses. The repository does not need to be private. Release Reframe under the GPLv3 policy above, retain the original component licenses, attribute the CC BY 4.0 design, and publish matching Corresponding Source beside the installer. VideoLAN explicitly permits modified redistribution without asking it for separate permission. [VideoLAN redistribution guidance](https://docs.videolan.me/vlc-user/en/support/faq/legalconcerns.html#may-i-redistribute-a-piece-of-videolan-software).
+
+Use Reframe's own branding and keep the unofficial-fork statement. The copyright grants do not grant unrestricted VideoLAN trademarks or rights to third-party illustrative media. Codec patent and libdvdcss jurisdiction questions are separate from whether GPL source can be hosted publicly; VideoLAN notes the libdvdcss distribution issue in its legal FAQ. [VideoLAN legal FAQ](https://docs.videolan.me/vlc-user/en/support/faq/legalconcerns.html#is-libdvdcss-legal).

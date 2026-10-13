@@ -41,6 +41,12 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/build-validation/contrib/contrib-win64"
+          # Reuse the verified matching source archive from the first release.
+          # The linked contrib revision is unchanged; fetch still verifies every package.
+          if curl --fail --location --retry 3 -o /tmp/reframe-contrib-source.tar.xz https://github.com/webmaster94/vlc-redesign/releases/download/v0.1.0/Reframe-3.0.24-r1-dependency-source.tar.xz; then
+            echo "82cb6c47af0723693f015e1b0f4e6afc36b461b38c2cbbf20de52a52100ce643  /tmp/reframe-contrib-source.tar.xz" | sha256sum --check
+            tar -xJf /tmp/reframe-contrib-source.tar.xz -C "$GITHUB_WORKSPACE/contrib"
+          fi
           make -j4 fetch PKGS_FOUND= 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
           cd "$GITHUB_WORKSPACE"
           mkdir -p dist

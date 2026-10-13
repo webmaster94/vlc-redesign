@@ -132,7 +132,7 @@ void RedesignSeek::loadCues()
                 continue;
             Cue cue;
             cue.from = cueTime(times[0]);
-            cue.to = cueTime(times[1].split(' ').first());
+            cue.to = cueTime(times[1].trimmed().split(' ', QString::SkipEmptyParts).first());
             cue.text = QStringList(lines.mid(i + 1)).join(' ');
             cue.text.remove(QRegularExpression("<[^>]+>"));
             cues << cue;
@@ -155,7 +155,7 @@ void RedesignSeek::paintEvent(QPaintEvent *)
     fill.setAlpha(65);
     p.setBrush(fill);
     p.drawRoundedRect(QRectF(3, 4, (width() - 6) * position, h), 5, 5);
-    if (!waveform.isEmpty())
+    if (getSettings()->value("Redesign/waveform", false).toBool() && !waveform.isEmpty())
     {
         p.setPen(QPen(palette().highlight().color(), 1));
         for (int x = 4; x < width() - 4; x += 2)
@@ -328,7 +328,7 @@ void RedesignSeek::decodeWaveform()
         for (int bin = 0; bin < 1024; ++bin)
         {
             float peak = 0;
-            for (int i = bin * samples / 1024; i < (bin + 1) * samples / 1024; ++i)
+            for (int i = int(qint64(bin) * samples / 1024); i < int(qint64(bin + 1) * samples / 1024); ++i)
                 peak = qMax(peak, qAbs(int(qFromLittleEndian<qint16>(
                                       reinterpret_cast<const uchar *>(data.constData()) + i * 2))) /
                                       32768.f);

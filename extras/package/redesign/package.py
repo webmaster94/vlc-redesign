@@ -37,6 +37,8 @@ def main():
     shutil.copy2(repo / "extras/package/redesign/reframe-branding.bmp", stage / "reframe-branding.bmp")
     shutil.copy2(repo / "COPYING.LIB", stage / "COPYING.LIB.txt")
     shutil.copy2(repo / "COPYING.GPL3", stage / "COPYING.GPL3.txt")
+    shutil.copy2(repo / "COPYING", stage / "COPYING.GPL2.txt")
+    shutil.copy2(repo / "COPYING.GPL3", stage / "COPYING.txt")
     shutil.copy2(repo / "doc/redesign/credits.txt", stage / "CREDITS.txt")
     shutil.copy2(repo / "README.md", stage / "FORK-README.txt")
     shutil.copytree(repo / "extras/package/redesign/fonts", stage / "fonts")

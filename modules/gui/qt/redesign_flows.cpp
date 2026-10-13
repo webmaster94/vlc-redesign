@@ -44,6 +44,7 @@
 #include <QUuid>
 #include <QDesktopServices>
 #include <QMessageBox>
+#include <QInputDialog>
 #include <QMimeData>
 #include <QDropEvent>
 #include <QKeyEvent>
@@ -210,15 +211,28 @@ void RedesignShell::openTracks(int selected)
         controls->addWidget(list);
         auto update = [this, list, page]
         {
-            list->clear();
             auto input = THEMIM->getInput();
             if (!input)
+            {
+                list->clear();
                 return;
+            }
             const char *variable = page == 5 ? "video-es" : page == 6 ? "audio-es" : "spu-es";
             vlc_value_t values, texts;
             if (var_Change(input, variable, VLC_VAR_GETCHOICES, &values, &texts))
                 return;
             const int active = var_GetInteger(input, variable);
+            QString signature = QString::number(quintptr(input)) + QString::number(active);
+            for (int i = 0; i < values.p_list->i_count; ++i)
+                signature += QString::number(values.p_list->p_values[i].i_int) +
+                             qfu(texts.p_list->p_values[i].psz_string);
+            if (list->property("signature").toString() == signature)
+            {
+                var_FreeList(&values, &texts);
+                return;
+            }
+            list->setProperty("signature", signature);
+            list->clear();
             for (int i = 0; i < values.p_list->i_count; ++i)
             {
                 auto item = new QListWidgetItem(qfu(texts.p_list->p_values[i].psz_string), list);
@@ -229,6 +243,10 @@ void RedesignShell::openTracks(int selected)
             var_FreeList(&values, &texts);
         };
         update();
+        auto timer = new QTimer(list);
+        timer->setInterval(400);
+        connect(timer, &QTimer::timeout, list, update);
+        timer->start();
         connect(THEMIM, &MainInputManager::inputChanged, list, [update](bool) { update(); });
         connect(list, &QListWidget::itemClicked, this,
                 [this, page](QListWidgetItem *item)
@@ -338,6 +356,10 @@ void RedesignShell::applyMediaBindings()
         return;
     bindingInput = id;
     const QString path = QUrl(uri).isLocalFile() ? QUrl(uri).toLocalFile() : uri;
+    QStringList attached = window->property("activeSlaveInput").toString() == id
+                               ? window->property("activeSlaveUris").toStringList()
+                               : QStringList();
+    window->setProperty("activeSlaveInput", id);
     QVariantMap defaultsMap;
     const auto localKeys = window->property("reframeLocalKeys").toStringList();
     for (const auto &key : localKeys)
@@ -374,9 +396,12 @@ void RedesignShell::applyMediaBindings()
         for (const auto &track : tracks)
         {
             const QString source = QUrl::fromUserInput(track, QString(), QUrl::AssumeLocalFile).toString();
-            input_AddSlave(input, kind ? SLAVE_TYPE_AUDIO : SLAVE_TYPE_SPU, qtu(source), false, true, false);
+            if (!attached.contains(source) && input_AddSlave(input, kind ? SLAVE_TYPE_AUDIO : SLAVE_TYPE_SPU,
+                                                             qtu(source), false, true, false) == VLC_SUCCESS)
+                attached << source;
         }
     }
+    window->setProperty("activeSlaveUris", attached);
     const QString folder = QFileInfo(path).absolutePath();
     const auto defaults = getSettings()->value("Redesign/mediaDefaults/" + folder).toMap();
     if (!defaults.isEmpty())
@@ -399,7 +424,7 @@ void RedesignShell::toggleLibraryDock()
     showPlayer();
     libraryDock = new QWidget(this);
     libraryDock->setObjectName("libraryDock");
-    libraryDock->setFixedWidth(320);
+    libraryDock->setFixedWidth(376);
     auto layout = new QVBoxLayout(libraryDock);
     layout->setContentsMargins(8, 8, 8, 8);
     auto header = new QHBoxLayout;
@@ -440,7 +465,7 @@ void RedesignShell::toggleLibraryDock()
             });
     connect(close, &QToolButton::clicked, this, [this] { toggleLibraryDock(); });
     bodyLayout->insertWidget(1, libraryDock);
-    Reframe::animateWidth(libraryDock, 320, 208);
+    Reframe::animateWidth(libraryDock, 376, 208);
 }
 void RedesignShell::showQueue(int selected)
 {
@@ -661,38 +686,56 @@ void RedesignShell::updateQueue()
         }
         list->setProperty("signature", signature);
     }
-    auto chapters = sidePanel->findChild<QListWidget *>("chapterItems");
-    chapters->clear();
-    auto bookmarks = sidePanel->findChild<QListWidget *>("bookmarkItems");
-    bookmarks->clear();
+    auto replace = [this](QListWidget *list, const QList<QPair<QString, QVariant>> &rows)
+    {
+        QString signature = QString::number(quintptr(THEMIM->getInput()));
+        for (const auto &row : rows)
+            signature += QString::number(row.first.size()) + row.first + row.second.toString();
+        if (list->property("signature").toString() == signature)
+            return;
+        const QVariant selected = list->currentItem() ? list->currentItem()->data(Qt::UserRole) : QVariant();
+        list->clear();
+        for (const auto &data : rows)
+        {
+            auto row = new QListWidgetItem(data.first, list);
+            row->setData(Qt::UserRole, data.second);
+            if (data.second == selected)
+                list->setCurrentItem(row);
+        }
+        list->setProperty("signature", signature);
+    };
+    auto chapters = sidePanel->findChild<QListWidget *>("chapterItems"),
+         bookmarks = sidePanel->findChild<QListWidget *>("bookmarkItems");
+    QList<QPair<QString, QVariant>> chapterRows, bookmarkRows;
     auto input = THEMIM->getInput();
-    if (!input)
-        return;
-    vlc_value_t values, texts;
-    if (!var_Change(input, "chapter", VLC_VAR_GETCHOICES, &values, &texts))
+    if (input)
     {
-        for (int i = 0; i < values.p_list->i_count; ++i)
+        vlc_value_t values, texts;
+        if (!var_Change(input, "chapter", VLC_VAR_GETCHOICES, &values, &texts))
         {
-            auto row = new QListWidgetItem(qfu(texts.p_list->p_values[i].psz_string), chapters);
-            row->setData(Qt::UserRole, int(values.p_list->p_values[i].i_int));
+            for (int i = 0; i < values.p_list->i_count; ++i)
+                chapterRows << qMakePair(qfu(texts.p_list->p_values[i].psz_string),
+                                         QVariant(int(values.p_list->p_values[i].i_int)));
+            var_FreeList(&values, &texts);
         }
-        var_FreeList(&values, &texts);
-    }
-    seekpoint_t **points;
-    int count;
-    if (!input_Control(input, INPUT_GET_BOOKMARKS, &points, &count))
-    {
-        for (int i = 0; i < count; ++i)
+        seekpoint_t **points;
+        int count;
+        if (!input_Control(input, INPUT_GET_BOOKMARKS, &points, &count))
         {
-            auto row = new QListWidgetItem(qfu(points[i]->psz_name) + "   " +
-                                               timeText(points[i]->i_time_offset / CLOCK_FREQ),
-                                           bookmarks);
-            row->setData(Qt::UserRole, qlonglong(points[i]->i_time_offset));
-            vlc_seekpoint_Delete(points[i]);
+            for (int i = 0; i < count; ++i)
+            {
+                bookmarkRows << qMakePair(QString(qfu(points[i]->psz_name) + "   " +
+                                                  timeText(points[i]->i_time_offset / CLOCK_FREQ)),
+                                          QVariant(qlonglong(points[i]->i_time_offset)));
+                vlc_seekpoint_Delete(points[i]);
+            }
+            free(points);
         }
-        free(points);
     }
+    replace(chapters, chapterRows);
+    replace(bookmarks, bookmarkRows);
 }
+
 void RedesignShell::openNetwork()
 {
     auto dialog = new Reframe::Dialog(window, "Open Network Stream", QSize(1048, 631));
@@ -970,6 +1013,8 @@ void RedesignShell::batchTracks(const QStringList &supplied, int initialKind)
                             paths[i],
                         tracks);
                 }
+                bindingInput.clear();
+                applyMediaBindings();
                 dialog->close();
             });
     Reframe::reveal(dialog);
@@ -1134,6 +1179,9 @@ void RedesignShell::layoutControls()
                                                                             << "playlist")
                                   .toStringList();
     appliedToolbar = order;
+    const auto auxiliary = getSettings()->value("Redesign/leftControls").toStringList() +
+                           getSettings()->value("Redesign/topControls").toStringList() +
+                           getSettings()->value("Redesign/toolbar2").toStringList();
     for (auto b : controlButtons)
         b->hide();
     const QHash<QString, QWidget *> widgets = {
@@ -1141,12 +1189,33 @@ void RedesignShell::layoutControls()
     for (auto widget : widgets)
         widget->hide();
     while (auto item = transportLayout->takeAt(0))
+    {
+        if (item->widget() && item->widget()->property("customLabel").toBool())
+            delete item->widget();
         delete item;
+    }
     const QHash<QString, int> actions = {{"record", RECORD_ACTION}, {"snapshot", SNAPSHOT_ACTION},
                                          {"repeat", LOOP_ACTION},   {"shuffle", RANDOM_ACTION},
                                          {"frame", FRAME_ACTION},   {"reverse", REVERSE_ACTION}};
-    for (const auto &name : order)
+    for (const auto &name : order + auxiliary)
     {
+        if (QStringList({"thumbnail", "fileName", "artistName", "folderName", "playlistName"}).contains(name))
+        {
+            if (order.contains(name))
+            {
+                auto label = new QLabel(transport);
+                label->setObjectName("controlMetadata");
+                label->setProperty("metadataField", name);
+                label->setProperty("customLabel", true);
+                label->setTextFormat(Qt::PlainText);
+                label->setMaximumWidth(180);
+                if (name == "thumbnail")
+                    label->setFixedSize(40, 28);
+                transportLayout->addWidget(label);
+                label->show();
+            }
+            continue;
+        }
         if (name == "spacer")
         {
             transportLayout->addStretch();
@@ -1254,10 +1323,156 @@ void RedesignShell::layoutControls()
             }
             widget = b;
         }
-        widget->show();
-        transportLayout->addWidget(widget, name == "seek" ? 1 : 0);
+        if (order.contains(name))
+        {
+            widget->show();
+            transportLayout->addWidget(widget, name == "seek" ? 1 : 0);
+        }
+        else
+            widget->hide();
     }
     transport->updateGeometry();
+    populateAuxiliaryControls();
+}
+void RedesignShell::populateAuxiliaryControls()
+{
+    const QHash<QString, QWidget *> fields = {
+        {"elapsed", elapsed}, {"duration", duration}, {"seek", seek}, {"volumeSlider", volume}};
+    for (auto field : fields)
+        if (field->parentWidget() != transport)
+        {
+            field->setParent(transport);
+            field->hide();
+        }
+    for (QWidget **slot : {&customLeft, &customTop, &extraToolbar})
+    {
+        if (*slot)
+        {
+            delete *slot;
+            *slot = nullptr;
+        }
+    }
+    auto fill = [this, fields](QWidget *host, const QStringList &names, bool vertical)
+    {
+        auto layout = new QBoxLayout(vertical ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight, host);
+        layout->setContentsMargins(4, 4, 4, 4);
+        layout->setSpacing(8);
+        for (const auto &name : names)
+        {
+            if (name == "spacer")
+            {
+                layout->addStretch();
+                continue;
+            }
+            if (name == "divider")
+            {
+                layout->addWidget(new QLabel(vertical ? "_" : "|"));
+                continue;
+            }
+            if (fields.contains(name) && !vertical)
+            {
+                auto field = fields.value(name);
+                layout->addWidget(field, name == "seek" ? 1 : 0);
+                field->show();
+                continue;
+            }
+            if (QStringList({"thumbnail", "fileName", "artistName", "folderName", "playlistName"})
+                    .contains(name))
+            {
+                auto label = new QLabel;
+                label->setObjectName("controlMetadata");
+                label->setProperty("metadataField", name);
+                label->setTextFormat(Qt::PlainText);
+                label->setMaximumWidth(220);
+                label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+                if (name == "thumbnail")
+                    label->setFixedSize(40, 28);
+                else
+                    label->setMinimumWidth(70);
+                layout->addWidget(label);
+                continue;
+            }
+            auto b = button(name);
+            b->setToolTip(name);
+            layout->addWidget(b);
+            auto original = controlButtons.value(name, nullptr);
+            if (original)
+                connect(b, &QToolButton::clicked, original, &QToolButton::click);
+        }
+    };
+    const auto left = getSettings()->value("Redesign/leftControls").toStringList();
+    if (!left.isEmpty())
+    {
+        customLeft = new QWidget(sidebar);
+        fill(customLeft, left, true);
+        auto layout = static_cast<QVBoxLayout *>(sidebar->layout());
+        layout->insertWidget(qMax(0, layout->count() - 2), customLeft);
+    }
+    const auto top = getSettings()->value("Redesign/topControls").toStringList();
+    if (!top.isEmpty())
+    {
+        customTop = new QWidget(header);
+        fill(customTop, top, false);
+        static_cast<QHBoxLayout *>(header->layout())->insertWidget(4, customTop);
+    }
+    const auto second = getSettings()->value("Redesign/toolbar2").toStringList();
+    if (!second.isEmpty())
+    {
+        extraToolbar = new QWidget(this);
+        extraToolbar->setObjectName("transport");
+        extraToolbar->setFixedHeight(54);
+        fill(extraToolbar, second, false);
+        static_cast<QVBoxLayout *>(layout())->addWidget(extraToolbar);
+    }
+    if (auto old = findChild<QTimer *>("metadataControlsTimer"))
+    {
+        old->stop();
+        delete old;
+    }
+    auto timer = new QTimer(this);
+    timer->setObjectName("metadataControlsTimer");
+    timer->setInterval(350);
+    connect(timer, &QTimer::timeout, this,
+            [this]
+            {
+                auto item = THEMIM->currentInputItem();
+                char *raw = item ? input_item_GetURI(item) : nullptr;
+                const QUrl url(qfu(raw ? raw : ""));
+                free(raw);
+                const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+                for (auto label : findChildren<QLabel *>("controlMetadata"))
+                {
+                    const QString field = label->property("metadataField").toString();
+                    QString value;
+                    if (field == "thumbnail")
+                    {
+                        const QString image = thumbnails.value(path);
+                        if (QFileInfo(image).size() > 0)
+                            label->setPixmap(QPixmap(image).scaled(label->size(), Qt::KeepAspectRatio,
+                                                                   Qt::SmoothTransformation));
+                        continue;
+                    }
+                    if (field == "fileName")
+                        value = QFileInfo(path).fileName();
+                    else if (field == "folderName")
+                        value = QFileInfo(path).dir().dirName();
+                    else if (field == "playlistName")
+                        value = getSettings()
+                                    ->value("Redesign/collection/" + currentCollection)
+                                    .toMap()
+                                    .value("name")
+                                    .toString();
+                    else if (field == "artistName" && item)
+                    {
+                        char *artist = input_item_GetArtist(item);
+                        value = qfu(artist ? artist : "");
+                        free(artist);
+                    }
+                    label->setToolTip(value);
+                    label->setText(label->fontMetrics().elidedText(value, Qt::ElideMiddle, 220));
+                }
+            });
+    timer->start();
 }
 void RedesignShell::customize()
 {
@@ -1303,6 +1518,11 @@ void RedesignShell::customize()
                                                 << "speed"
                                                 << "spacer"
                                                 << "divider";
+    const QStringList metadataFields = QStringList() << "thumbnail"
+                                                     << "fileName"
+                                                     << "artistName"
+                                                     << "folderName"
+                                                     << "playlistName";
     auto selected = new QListWidget;
     auto inventory = new QListWidget;
     selected->setObjectName("toolbarItems");
@@ -1325,6 +1545,30 @@ void RedesignShell::customize()
             inventory->addItem(name);
     dialog->body->addWidget(new QLabel("Player toolbar"));
     dialog->body->addWidget(selected, 1);
+    auto positions = new QHBoxLayout;
+    auto left = new QListWidget;
+    auto top = new QListWidget;
+    auto second = new QListWidget;
+    const QList<QPair<QListWidget *, QString>> placements = {
+        {left, "leftControls"}, {top, "topControls"}, {second, "toolbar2"}};
+    for (const auto &slot : placements)
+    {
+        auto container = new QWidget;
+        auto box = new QVBoxLayout(container);
+        box->addWidget(new QLabel(slot.second == "leftControls"  ? "Left sidebar"
+                                  : slot.second == "topControls" ? "Title bar"
+                                                                 : "Second toolbar row"));
+        slot.first->setViewMode(QListView::IconMode);
+        slot.first->setDragDropMode(QAbstractItemView::DragDrop);
+        slot.first->setDefaultDropAction(Qt::MoveAction);
+        slot.first->setAcceptDrops(true);
+        slot.first->setDragEnabled(true);
+        slot.first->addItems(getSettings()->value("Redesign/" + slot.second).toStringList());
+        box->addWidget(slot.first);
+        positions->addWidget(container);
+    }
+    dialog->body->addLayout(positions, 1);
+    inventory->addItems(metadataFields);
     dialog->body->addWidget(new QLabel("Available controls"));
     dialog->body->addWidget(inventory, 1);
     auto row = new QHBoxLayout;
@@ -1344,14 +1588,19 @@ void RedesignShell::customize()
             });
     connect(cancel, &QPushButton::clicked, dialog, &QDialog::close);
     connect(save, &QPushButton::clicked, this,
-            [this, dialog, selected]
+            [this, dialog, selected, placements]
             {
                 QStringList names;
                 for (int i = 0; i < selected->count(); ++i)
                     names << selected->item(i)->text();
-                if (!names.contains("play"))
-                    names.prepend("play");
                 getSettings()->setValue("Redesign/toolbar", names);
+                for (const auto &slot : placements)
+                {
+                    QStringList items;
+                    for (int i = 0; i < slot.first->count(); ++i)
+                        items << slot.first->item(i)->text();
+                    getSettings()->setValue("Redesign/" + slot.second, items);
+                }
                 layoutControls();
                 dialog->close();
             });
@@ -1377,8 +1626,47 @@ void RedesignShell::mainMenu(const QPoint &position)
         recent->addAction(QFileInfo(QUrl(path).toLocalFile()).fileName(), this,
                           [this, path] { openMedia(path); });
     menu.addSeparator();
-    menu.addAction("Profiles", this, [this] { openMediaSettings(4); });
-    menu.addAction("Keyboard Shortcuts", this, [this] { openSettings(3); });
+    auto profiles = menu.addMenu("Profile");
+    for (const auto &name : getSettings()->value("Redesign/profileNames").toStringList())
+    {
+        auto action = profiles->addAction(name);
+        action->setCheckable(true);
+        action->setChecked(getSettings()->value("Redesign/activeProfile").toString() == name);
+        connect(action, &QAction::triggered, this,
+                [this, name]
+                {
+                    auto preferences = new RedesignPreferences(p_intf, window, 0, [this] { applyTheme(); });
+                    preferences->restore(getSettings()->value("Redesign/profiles/" + name).toMap());
+                    preferences->deleteLater();
+                    getSettings()->setValue("Redesign/activeProfile", name);
+                    layoutControls();
+                    applyTheme();
+                });
+    }
+    profiles->addAction("New Profile", this,
+                        [this]
+                        {
+                            const auto name =
+                                QInputDialog::getText(window, "New Profile", "Profile name").trimmed();
+                            if (name.isEmpty())
+                                return;
+                            auto preferences =
+                                new RedesignPreferences(p_intf, window, 0, [this] { applyTheme(); });
+                            preferences->saveAppProfile(name);
+                            preferences->deleteLater();
+                        });
+    profiles->addAction("Manage Profiles", this,
+                        [this]
+                        {
+                            openSettings();
+                            static_cast<RedesignPreferences *>(settingsDialog)->manageProfiles();
+                        });
+    menu.addAction("Keyboard Shortcuts", this,
+                   [this]
+                   {
+                       openSettings(3);
+                       static_cast<RedesignPreferences *>(settingsDialog)->editShortcuts();
+                   });
     menu.addAction("Customize Player", this, [this] { customize(); });
     menu.addAction("Settings\tCtrl+P", this, [this] { openSettings(); });
     menu.addAction(
@@ -1441,8 +1729,10 @@ bool RedesignShell::eventFilter(QObject *target, QEvent *event)
 }
 void RedesignShell::showChrome()
 {
-    header->show();
-    transport->show();
+    if (!header->isVisible())
+        Reframe::animateHeight(header, true, 300);
+    if (!transport->isVisible())
+        Reframe::animateHeight(transport, true, 300);
     if (minimal)
         chromeTimer->start(qMax(1000, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
 }

@@ -49,6 +49,7 @@ class RedesignShell : public QWidget
     void toggleQueue();
     bool isQueueVisible() const;
     void showChrome();
+    void openProperties();
     void batchTracks(const QStringList &paths = QStringList(), int kind = 0);
     void newPlaylist(const QString &id = QString());
     void toggleMiniPlayer();

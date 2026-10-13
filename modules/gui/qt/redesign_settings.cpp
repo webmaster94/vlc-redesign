@@ -8,6 +8,7 @@
 #include "main_interface.hpp"
 #include "input_manager.hpp"
 #include "actions_manager.hpp"
+#include "redesign.hpp"
 #include "util/customwidgets.hpp"
 #include "dialogs_provider.hpp"
 #include "recents.hpp"
@@ -43,6 +44,7 @@
 #include <QKeyEvent>
 #include <QStyledItemDelegate>
 #include <QPainter>
+#include <QProcess>
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -218,9 +220,23 @@ RedesignPreferences::RedesignPreferences(intf_thread_t *intf, MainInterface *mai
     connect(navigation, &QListWidget::currentRowChanged, this, select);
     if (local)
     {
+        auto root = static_cast<QVBoxLayout *>(layout());
+        auto headerItem = root->takeAt(0);
+        auto header = headerItem->layout();
+        while (auto item = header->takeAt(0))
+        {
+            if (item->widget())
+                item->widget()->hide();
+            delete item;
+        }
+        delete headerItem;
+        root->setContentsMargins(0, 0, 0, 0);
+        root->setSpacing(0);
+        body->setSpacing(0);
         filter->deleteLater();
         navigation->hide();
         auto tabs = new QWidget;
+        tabs->setFixedHeight(50);
         auto tabrow = new QHBoxLayout(tabs);
         tabrow->setContentsMargins(0, 0, 0, 0);
         tabrow->setSpacing(0);
@@ -252,6 +268,18 @@ RedesignPreferences::RedesignPreferences(intf_thread_t *intf, MainInterface *mai
                             navigation->item(i)->setHidden(false);
                         return;
                     }
+                    const int selected = navigation->currentRow();
+                    for (int i = 0; i < pages->count(); ++i)
+                        if (!pages->widget(i)->property("built").toBool())
+                        {
+                            auto old = pages->widget(i);
+                            auto next = buildPage(i);
+                            next->setProperty("built", true);
+                            pages->removeWidget(old);
+                            pages->insertWidget(i, next);
+                            delete old;
+                        }
+                    pages->setCurrentIndex(selected);
                     for (int i = 0; i < navigation->count(); ++i)
                     {
                         auto widget = pages->widget(i);
@@ -279,6 +307,59 @@ RedesignPreferences::~RedesignPreferences()
 void RedesignPreferences::selectPage(int page)
 {
     navigation->setCurrentRow(qBound(0, page, pages->count() - 1));
+}
+int RedesignPreferences::currentPage() const
+{
+    return navigation->currentRow();
+}
+void RedesignPreferences::openAdvanced(int page)
+{
+    selectPage(page);
+    for (auto button : pages->currentWidget()->findChildren<QPushButton *>("foldButton"))
+        if (button->text().contains("Advanced"))
+        {
+            button->setChecked(true);
+            if (auto scroll = qobject_cast<QScrollArea *>(pages->currentWidget()))
+                scroll->ensureWidgetVisible(button);
+            break;
+        }
+}
+void RedesignPreferences::saveAppProfile(const QString &name)
+{
+    QVariantMap settings;
+    size_t count;
+    auto modules = module_list_get(&count);
+    for (size_t m = 0; m < count; ++m)
+    {
+        unsigned n;
+        auto configs = module_config_get(modules[m], &n);
+        for (unsigned i = 0; i < n; ++i)
+            if (configVisible(configs[i]))
+                settings[qfu(configs[i].psz_name)] = read(qfu(configs[i].psz_name));
+        module_config_free(configs);
+    }
+    module_list_free(modules);
+    for (const auto &key :
+         QStringList({"theme", "accent", "toolbar", "toolbar2", "leftControls", "topControls",
+                      "compactOnPlayback", "VideosDirectory", "MusicDirectory", "autoHideControls",
+                      "seekThumbnails", "waveform", "subtitleTimeline"}))
+        settings["ui:" + key] = getSettings()->value("Redesign/" + key);
+    settings["ui:theme"] = getSettings()->value("Redesign/theme", "Dark");
+    settings["ui:accent"] = getSettings()->value("Redesign/accent", "#d37918");
+    for (auto it = settings.begin(); it != settings.end();)
+    {
+        if (!it.value().isValid())
+            it = settings.erase(it);
+        else
+            ++it;
+    }
+    getSettings()->setValue("Redesign/profiles/" + name, settings);
+    auto names = getSettings()->value("Redesign/profileNames").toStringList();
+    if (!names.contains(name))
+    {
+        names << name;
+        getSettings()->setValue("Redesign/profileNames", names);
+    }
 }
 void RedesignPreferences::restore(const QVariantMap &values)
 {
@@ -599,10 +680,28 @@ void RedesignPreferences::write(const QString &key, const QVariant &value)
                                    }
                                });
     }
-    if (key.startsWith("norm-") && cfgString(p_intf, "audio-filter").split(':').contains("normvol"))
+    char *activeChain = var_GetString(THEPL, "audio-filter");
+    const QStringList runningFilters = qfu(activeChain ? activeChain : "").split(':');
+    free(activeChain);
+    if (key.startsWith("norm-") && runningFilters.contains("normvol"))
     {
         playlist_EnableAudioFilter(THEPL, "normvol", false);
         playlist_EnableAudioFilter(THEPL, "normvol", true);
+    }
+    if (QStringList({"delay-time", "sweep-depth", "sweep-rate", "feedback-gain", "wet-mix", "dry-mix"})
+            .contains(key) &&
+        runningFilters.contains("chorus_flanger"))
+    {
+        auto filter = vlc_object_find_name(VLC_OBJECT(THEPL), "chorus_flanger");
+        if (filter && var_Type(filter, qtu(key)))
+            set(filter, key, value);
+        else
+        {
+            playlist_EnableAudioFilter(THEPL, "chorus_flanger", false);
+            playlist_EnableAudioFilter(THEPL, "chorus_flanger", true);
+        }
+        if (filter)
+            vlc_object_release(filter);
     }
 }
 void RedesignPreferences::heading(QVBoxLayout *layout, const QString &text)
@@ -1037,7 +1136,7 @@ QWidget *RedesignPreferences::equalizer(bool horizontal)
     auto bandsWidget = new QWidget;
     auto bandsLayout = horizontal ? static_cast<QBoxLayout *>(new QVBoxLayout(bandsWidget))
                                   : static_cast<QBoxLayout *>(new QHBoxLayout(bandsWidget));
-    bandsLayout->setSpacing(8);
+    bandsLayout->setSpacing(horizontal ? 8 : 4);
     bandsLayout->setContentsMargins(8, 8, 8, 8);
     QStringList values = cfgString(p_intf, "equalizer-bands").split(' ', QString::SkipEmptyParts);
     while (values.size() < 10)
@@ -1063,6 +1162,13 @@ QWidget *RedesignPreferences::equalizer(bool horizontal)
         auto title = new QLabel(names[i]);
         title->setAlignment(Qt::AlignCenter);
         auto spin = new QDoubleSpinBox;
+        if (!horizontal)
+        {
+            spin->setFixedWidth(62);
+            QFont font = spin->font();
+            font.setPixelSize(12);
+            spin->setFont(font);
+        }
         spin->setDecimals(1);
         spin->setRange(-20, 20);
         spin->setSuffix(" dB");
@@ -1442,6 +1548,7 @@ void RedesignPreferences::profiles()
 }
 void RedesignPreferences::shortcuts()
 {
+    auto pending = std::make_shared<QHash<QString, QString>>();
     auto dialog = new Reframe::Dialog(this, "Keyboard Shortcuts", QSize(1048, 800));
     auto filter = new QLineEdit;
     filter->setPlaceholderText("Search shortcuts");
@@ -1472,14 +1579,15 @@ void RedesignPreferences::shortcuts()
             if (!config_FindConfig(qtu(name)))
                 continue;
             auto edit = new QKeySequenceEdit(QKeySequence(cfgString(p_intf, qtu(name))), table);
+            edit->setProperty("configKey", name);
             table->setCellWidget(r, c, edit);
             connect(edit, &QKeySequenceEdit::editingFinished, this,
-                    [this, name, edit]
+                    [pending, name, edit]
                     {
                         const int code = edit->keySequence()[0];
                         QKeyEvent event(QEvent::KeyPress, code & ~Qt::KeyboardModifierMask,
                                         Qt::KeyboardModifiers(code & Qt::KeyboardModifierMask));
-                        write(name, VLCKeyToString(qtEventToVLCKey(&event), false));
+                        (*pending)[name] = VLCKeyToString(qtEventToVLCKey(&event), false);
                     });
         }
     }
@@ -1493,17 +1601,35 @@ void RedesignPreferences::shortcuts()
     auto reset = new QPushButton("Reset all shortcuts");
     dialog->body->addWidget(reset);
     connect(reset, &QPushButton::clicked, this,
-            [this, dialog]
+            [pending, table]
             {
                 unsigned n;
                 auto cfg = module_config_get(module_get_main(), &n);
                 for (unsigned i = 0; i < n; ++i)
                     if (cfg[i].psz_name && (QString::fromUtf8(cfg[i].psz_name).startsWith("key-") ||
                                             QString::fromUtf8(cfg[i].psz_name).startsWith("global-key-")))
-                        write(qfu(cfg[i].psz_name), qfu(cfg[i].orig.psz ? cfg[i].orig.psz : ""));
+                        (*pending)[qfu(cfg[i].psz_name)] = qfu(cfg[i].orig.psz ? cfg[i].orig.psz : "");
                 module_config_free(cfg);
+                for (auto edit : table->findChildren<QKeySequenceEdit *>())
+                {
+                    QSignalBlocker block(edit);
+                    edit->setKeySequence(
+                        QKeySequence(pending->value(edit->property("configKey").toString())));
+                }
+            });
+    auto footer = new QHBoxLayout;
+    footer->addStretch();
+    auto cancel = new QPushButton("Cancel"), save = new QPushButton("Save");
+    footer->addWidget(cancel);
+    footer->addWidget(save);
+    dialog->body->addLayout(footer);
+    connect(cancel, &QPushButton::clicked, dialog, &QDialog::close);
+    connect(save, &QPushButton::clicked, this,
+            [this, dialog, pending]
+            {
+                for (auto it = pending->begin(); it != pending->end(); ++it)
+                    write(it.key(), it.value());
                 dialog->close();
-                shortcuts();
             });
     Reframe::reveal(dialog);
 }
@@ -1803,7 +1929,10 @@ QWidget *RedesignPreferences::buildPage(int page)
                     "Language=sub-language|#Synchronization|Subtitle Track Delay=sub-delay|Subtitle "
                     "Speed=sub-fps|Subtitle Duration Factor=subsdelay-factor|#Appearance|Embedded Sub "
                     "Format=ass-use-embedded-style|Subtitle Font=freetype-font|Text "
-                    "Color=freetype-color|Outline Color=freetype-outline-color"
+                    "Color=freetype-color|Outline Color=freetype-outline-color|Font "
+                    "Size=freetype-rel-fontsize|Exact Font Size=freetype-fontsize|Outline "
+                    "Thickness=freetype-outline-thickness|Background "
+                    "Opacity=freetype-background-opacity|Subtitle Offset=sub-margin"
                   : "#Tracks & Languages|Enable subtitles=spu|Preferred language=sub-language|Text "
                     "encoding=subsdec-encoding|#Loading Subtitles|Load subtitle files "
                     "automatically=sub-autodetect-file|File name "
@@ -1875,13 +2004,28 @@ QWidget *RedesignPreferences::buildPage(int page)
         connect(rescan, &QPushButton::clicked, this,
                 [this]
                 {
-                    char *cache = config_GetUserDir(VLC_CACHE_DIR);
-                    QDir folder(qfu(cache));
-                    for (const auto &file : folder.entryList(QStringList() << "plugins*.dat", QDir::Files))
-                        folder.remove(file);
-                    free(cache);
-                    QMessageBox::information(this, "Rescan plugins",
-                                             "The plugin cache will be regenerated on the next launch.");
+                    if (QMessageBox::question(
+                            this, "Rescan plugins",
+                            "Restart Reframe to rebuild its plugin catalog? Current media resumes.") !=
+                        QMessageBox::Yes)
+                        return;
+                    QStringList args;
+                    args << "--no-one-instance"
+                         << "--reset-plugins-cache";
+                    auto item = THEMIM->currentInputItem();
+                    if (item)
+                    {
+                        auto input = THEMIM->getInput();
+                        if (input)
+                            args << QString("--start-time=" + QString::number(var_GetInteger(input, "time") /
+                                                                              double(CLOCK_FREQ)));
+                        char *uri = input_item_GetURI(item);
+                        args << qfu(uri);
+                        free(uri);
+                    }
+                    config_SaveConfigFile(p_intf);
+                    if (QProcess::startDetached(QCoreApplication::applicationFilePath(), args))
+                        THEDP->quit();
                 });
     }
     else if (page == 11)
@@ -1936,7 +2080,13 @@ QWidget *RedesignPreferences::buildPage(int page)
     if (page > 0 && !local)
         layout->addWidget(Reframe::fold("Advanced Options", advanced(page), content));
     if (local)
+    {
         preset(layout);
+        auto advanced = new QPushButton("Open Advanced Settings");
+        layout->addWidget(advanced);
+        connect(advanced, &QPushButton::clicked, this,
+                [this, page] { window->redesign()->openSettings(page); });
+    }
     layout->addStretch();
     scroll->setWidget(content);
     return scroll;

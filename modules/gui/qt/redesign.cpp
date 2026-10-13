@@ -59,6 +59,7 @@
 #include <cmath>
 #include <algorithm>
 #include <memory>
+#include <QScrollBar>
 
 namespace
 {
@@ -1095,12 +1096,22 @@ void RedesignShell::applyTheme()
     {
         QString glyph = b->property("glyph").toString();
         if (!glyph.isEmpty())
-            b->setIcon(lineIcon(glyph, QColor(b == playButton    ? "#111111"
-                                              : glyph == "brand" ? accent
-                                                                 : text)));
+            b->setIcon(lineIcon(glyph, QColor(b == playButton                      ? "#111111"
+                                              : glyph == "brand" || b->isChecked() ? accent
+                                                                                   : text)));
     }
     window->setWindowIcon(lineIcon("brand", QColor(accent)));
     qApp->setWindowIcon(window->windowIcon());
+    if (auto timeline = dynamic_cast<RedesignSeek *>(seek))
+    {
+        if (timeline->property("waveformState").toBool() !=
+            getSettings()->value("Redesign/waveform", false).toBool())
+        {
+            timeline->setProperty("waveformState", getSettings()->value("Redesign/waveform", false));
+            timeline->refreshMedia();
+        }
+        timeline->update();
+    }
 }
 
 void RedesignShell::setNavigationWidth(bool collapse)
@@ -1133,6 +1144,8 @@ void RedesignShell::showPlayer()
         miniPlayer = nullptr;
     }
     pages->setCurrentWidget(videoPage);
+    bodyLayout->setContentsMargins(0, 0, 8, 0);
+    bodyLayout->setSpacing(0);
     setNavigationWidth(getSettings()->value("Redesign/compactOnPlayback", true).toBool());
 }
 bool RedesignShell::isPlayerVisible() const
@@ -1141,50 +1154,66 @@ bool RedesignShell::isPlayerVisible() const
 }
 void RedesignShell::setMinimal(bool m)
 {
+    if (minimal == m)
+        return;
     minimal = m;
-    header->setVisible(!m);
+    Reframe::animateHeight(header, !m, 300);
     sidebar->setVisible(!m);
-    transport->setVisible(!m);
+    Reframe::animateHeight(transport, !m, 300);
+    if (sidePanel)
+        sidePanel->hide();
+    if (libraryDock)
+        libraryDock->hide();
+    if (extraToolbar)
+        extraToolbar->setVisible(!m);
     if (m)
         showPlayer();
 }
 
 void RedesignShell::showLibrary(const QString &name)
 {
+    const bool alongside = THEMIM->getIM()->hasInput() && isPlayerVisible() && name != "Home";
     section = name;
-    setNavigationWidth(false);
-    for (QToolButton *b : sidebar->findChildren<QToolButton *>())
-        if (b->property("section").isValid())
-            b->setChecked(b->property("section").toString() == name);
-    if (name == "Network")
-    {
-        currentDirectory.clear();
-        pages->setCurrentWidget(browser);
-        refresh();
-        return;
-    }
-    if (name == "Playlists")
-    {
-        currentDirectory.clear();
-        pages->setCurrentWidget(browser);
-        refresh();
-        return;
-    }
-    pages->setCurrentWidget(browser);
+    musicGroup.clear();
     search->clear();
-    if (name == "Recent" || name == "Home")
+    setNavigationWidth(!alongside ? false : true);
+    for (auto button : sidebar->findChildren<QToolButton *>())
+        if (button->property("section").isValid())
+            button->setChecked(button->property("section").toString() == name);
+    pages->setCurrentWidget(browser);
+    if (name == "Home" || name == "Recent" || name == "Playlists" || name == "Network")
     {
         currentDirectory.clear();
         refresh();
-        return;
     }
-    QString d =
-        getSettings()
-            ->value("Redesign/" + name + "Directory",
-                    QStandardPaths::writableLocation(name == "Music" ? QStandardPaths::MusicLocation
-                                                                     : QStandardPaths::MoviesLocation))
-            .toString();
-    browse(d);
+    else
+        browse(getSettings()
+                   ->value("Redesign/" + name + "Directory",
+                           QStandardPaths::writableLocation(name == "Music" ? QStandardPaths::MusicLocation
+                                                                            : QStandardPaths::MoviesLocation))
+                   .toString());
+    if (alongside)
+    {
+        showPlayer();
+        if (libraryDock)
+        {
+            bodyLayout->removeWidget(libraryDock);
+            delete libraryDock;
+            libraryDock = nullptr;
+        }
+        toggleLibraryDock();
+    }
+    else
+    {
+        bodyLayout->setContentsMargins(8, 8, 8, 8);
+        bodyLayout->setSpacing(16);
+        if (libraryDock)
+            libraryDock->hide();
+        if (sidePanel)
+            sidePanel->hide();
+        if (THEMIM->getIM()->hasInput() && !miniPlayer)
+            toggleMiniPlayer();
+    }
 }
 
 void RedesignShell::browse(const QString &directory, bool remember)
@@ -1652,12 +1681,30 @@ void RedesignShell::runSmoke(const QString &reportPath)
                         {
                             openSettings(*index);
                             settingsDialog->layout()->activate();
+                            auto scroll = settingsDialog->findChildren<QScrollArea *>();
+                            for (auto area : scroll)
+                                if (area->isVisible() && area->horizontalScrollBar()->maximum() > 0)
+                                {
+                                    *capture = nullptr;
+                                    report(
+                                        QString("FAIL: horizontal overflow on settings page %1").arg(*index));
+                                    return;
+                                }
                             settingsDialog->grab().save(reportPath + QString(".page%1.png").arg(*index));
                             ++*index;
                             QTimer::singleShot(100, this, *capture);
                             return;
                         }
                         openSettings(6);
+                        auto preamp = settingsDialog->findChild<QSlider *>("preampSlider");
+                        if (preamp)
+                        {
+                            auto parent = preamp->parentWidget();
+                            while (parent && !qobject_cast<QScrollArea *>(parent))
+                                parent = parent->parentWidget();
+                            if (parent)
+                                static_cast<QScrollArea *>(parent)->ensureWidgetVisible(preamp, 20, 20);
+                        }
                         *capture = nullptr;
                         report("PASS: elapsed time, pause, resume, seek, redesigned queue, 13 settings "
                                "pages, equalizer gain and filter persistence, live subtitle synchronization");

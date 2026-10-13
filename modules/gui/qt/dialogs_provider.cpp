@@ -315,6 +315,7 @@ void DialogsProvider::aboutDialog()
 
 void DialogsProvider::mediaInfoDialog()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->openProperties();return;}
     MediaInfoDialog *dialog = MediaInfoDialog::getInstance( p_intf );
     if( !dialog->isVisible() || dialog->currentTab() != MediaInfoDialog::META_PANEL )
         dialog->showTab( MediaInfoDialog::META_PANEL );
@@ -362,6 +363,7 @@ void DialogsProvider::epgDialog()
 
 void DialogsProvider::setPopupMenu()
 {
+    if(p_intf->p_sys->p_mi&&p_intf->p_sys->p_mi->redesign()){p_intf->p_sys->p_mi->redesign()->playerMenu(QCursor::pos());return;}
     delete popupMenu;
     popupMenu = VLCMenuBar::PopupMenu( p_intf, true );
 }

@@ -343,6 +343,16 @@ void RedesignShell::mediaProperties(const QString &path)
             });
     Reframe::reveal(dialog);
 }
+void RedesignShell::openProperties()
+{
+    auto item = THEMIM->currentInputItem();
+    if (!item)
+        return;
+    char *raw = input_item_GetURI(item);
+    const QUrl url(qfu(raw ? raw : ""));
+    free(raw);
+    mediaProperties(url.isLocalFile() ? url.toLocalFile() : url.toString());
+}
 void RedesignShell::contextMenu(const QPoint &position)
 {
     auto item = files->itemAt(position);
