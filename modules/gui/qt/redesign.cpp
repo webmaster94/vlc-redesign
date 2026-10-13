@@ -52,6 +52,7 @@
 #include <QPropertyAnimation>
 #include <QFontDatabase>
 #include <QSizeGrip>
+#include <QFile>
 #include <cmath>
 #include <algorithm>
 
@@ -223,11 +224,11 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     playButton=button("play");playButton->setObjectName("playButton");playButton->setToolTip("Play / Pause");playButton->setFixedSize(54,30);bar->addWidget(playButton);connect(playButton,&QToolButton::clicked,THEAM,&ActionsManager::play);
     auto next=button("next");bar->addWidget(next);connect(next,&QToolButton::clicked,THEMIM,&MainInputManager::next);
     auto stop=button("stop");bar->addWidget(stop);connect(stop,&QToolButton::clicked,THEMIM,&MainInputManager::stop);
-    elapsed=new QLabel("00:00:00");elapsed->setMinimumWidth(62);bar->addWidget(elapsed);
+    elapsed=new QLabel("00:00:00");elapsed->setObjectName("elapsedTime");elapsed->setMinimumWidth(62);bar->addWidget(elapsed);
     seek=new ClickSlider(transport);seek->setObjectName("seek");seek->setRange(0,100000);seek->setEnabled(false);seek->setAccessibleName("Playback position");bar->addWidget(seek,1);
     connect(seek,&QSlider::valueChanged,this,[this](int v){THEMIM->getIM()->sliderUpdate(v/100000.f);});
     duration=new QLabel("00:00:00");duration->setMinimumWidth(62);bar->addWidget(duration);
-    connect(THEMIM->getIM(),&InputManager::positionUpdated,this,[this](float pos,int64_t time,int length){elapsed->setText(clockText(time));duration->setText(clockText(length));if(!seek->isSliderDown()){QSignalBlocker blocked(seek);seek->setValue(qMax(0,qRound(pos*100000)));}});
+    connect(THEMIM->getIM(),&InputManager::positionUpdated,this,[this](float pos,int64_t time,int length){elapsed->setText(clockText(time/CLOCK_FREQ));duration->setText(clockText(length));if(!seek->isSliderDown()){QSignalBlocker blocked(seek);seek->setValue(qMax(0,qRound(pos*100000)));}});
     connect(THEMIM->getIM(),&InputManager::inputCanSeek,seek,&QSlider::setEnabled);
     connect(THEMIM->getIM(),&InputManager::playingStatusChanged,this,[this](int state){playButton->setProperty("glyph",state==PLAYING_S?"pause":"play");playButton->setIcon(lineIcon(state==PLAYING_S?"pause":"play",QColor("#111111")));if(state==END_S)seek->setEnabled(false);});
     auto mute=button("volume");mute->setToolTip("Mute / Unmute");bar->addWidget(mute);connect(mute,&QToolButton::clicked,THEAM,&ActionsManager::toggleMuteAudio);
@@ -299,6 +300,7 @@ void RedesignShell::setNavigationWidth(bool collapse)
     for(QToolButton *b:sidebar->findChildren<QToolButton*>())b->setToolButtonStyle(collapse?Qt::ToolButtonIconOnly:Qt::ToolButtonTextBesideIcon);
 }
 void RedesignShell::showPlayer(){pages->setCurrentWidget(player);setNavigationWidth(getSettings()->value("Redesign/compactOnPlayback",true).toBool());}
+bool RedesignShell::isPlayerVisible() const {return pages->currentWidget()==player;}
 void RedesignShell::setMinimal(bool m){minimal=m;header->setVisible(!m);sidebar->setVisible(!m);transport->setVisible(!m);if(m)showPlayer();}
 
 void RedesignShell::showLibrary(const QString &name)
@@ -306,7 +308,7 @@ void RedesignShell::showLibrary(const QString &name)
     section=name;setNavigationWidth(false);
     for(QToolButton *b:sidebar->findChildren<QToolButton*>())if(b->property("section").isValid())b->setChecked(b->property("section").toString()==name);
     if(name=="Network"){THEDP->openNetDialog();return;}
-    if(name=="Playlists"){showPlayer();window->setPlaylistVisibility(true);return;}
+    if(name=="Playlists"){showPlayer();if(!window->isPlaylistVisible())window->togglePlaylist();return;}
     pages->setCurrentWidget(browser);search->clear();
     if(name=="Recent"||name=="Home"){currentDirectory.clear();refresh();return;}
     QString d=getSettings()->value("Redesign/"+name+"Directory",QStandardPaths::writableLocation(name=="Music"?QStandardPaths::MusicLocation:QStandardPaths::MoviesLocation)).toString();browse(d);
@@ -349,7 +351,7 @@ void RedesignShell::refresh()
 void RedesignShell::openMedia(const QString &path)
 {
     QUrl url=QUrl::fromUserInput(path,QString(),QUrl::AssumeLocalFile);
-    showPlayer();window->setPlaylistVisibility(false);Open::openMRL(p_intf,url.toString());
+    showPlayer();if(window->isPlaylistVisible())window->togglePlaylist();Open::openMRL(p_intf,url.toString());
 }
 
 void RedesignShell::contextMenu(const QPoint &position)
@@ -377,16 +379,21 @@ void RedesignShell::nextThumbnail()
 
 void RedesignShell::openSettings(int selectedPage)
 {
-    if(settingsDialog){settingsDialog->raise();settingsDialog->activateWindow();return;}
-    settingsDialog=new QDialog(window);settingsDialog->setAttribute(Qt::WA_DeleteOnClose);settingsDialog->setWindowTitle("Reframe settings");settingsDialog->resize(1000,740);
+    if(settingsDialog){
+        if(auto nav=settingsDialog->findChild<QListWidget *>("settingsNav"))nav->setCurrentRow(selectedPage);
+        settingsDialog->raise();settingsDialog->activateWindow();return;
+    }
+    settingsDialog=new QDialog(window);settingsDialog->setAttribute(Qt::WA_DeleteOnClose);settingsDialog->setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);settingsDialog->setWindowTitle("Reframe settings");settingsDialog->resize(1048,820);
     connect(settingsDialog,&QObject::destroyed,this,[this]{settingsDialog=nullptr;});
     auto root=new QVBoxLayout(settingsDialog);root->setContentsMargins(16,16,16,16);root->setSpacing(16);
-    auto settingsHeader=new QHBoxLayout;
+    auto headerWidget=new TitleBar(settingsDialog);auto settingsHeader=new QHBoxLayout(headerWidget);settingsHeader->setContentsMargins(0,0,0,0);
     auto filter=new QLineEdit;filter->setPlaceholderText("Search settings");filter->setFixedWidth(208);settingsHeader->addWidget(filter);
-    auto heading=new QLabel("Global Settings");heading->setObjectName("sectionHeading");settingsHeader->addWidget(heading,1);root->addLayout(settingsHeader);
+    auto heading=new QLabel("Global Settings");heading->setObjectName("sectionHeading");settingsHeader->addWidget(heading,1);auto dismiss=button("close");settingsHeader->addWidget(dismiss);connect(dismiss,&QToolButton::clicked,settingsDialog,&QDialog::close);root->addWidget(headerWidget);
     auto row=new QHBoxLayout;auto nav=new QListWidget;nav->setObjectName("settingsNav");nav->setFixedWidth(208);
     const QStringList labels=QStringList()<<"General"<<"Interface"<<"Privacy"<<"Controls"<<"Playback"<<"Video"<<"Audio"<<"Subtitles"<<"Library"<<"Network"<<"Advanced"<<"About";
     nav->addItems(labels);row->addWidget(nav);auto stack=new QStackedWidget;row->addWidget(stack,1);root->addLayout(row,1);
+    const QStringList glyphs=QStringList()<<"settings"<<"list"<<"home"<<"subtitles"<<"play"<<"videos"<<"audio"<<"subtitles"<<"folder"<<"network"<<"settings"<<"brand";
+    for(int i=0;i<nav->count();++i)nav->item(i)->setIcon(lineIcon(glyphs[i]));
     connect(filter,&QLineEdit::textChanged,nav,[nav](const QString &text){for(int i=0;i<nav->count();++i)nav->item(i)->setHidden(!nav->item(i)->text().contains(text,Qt::CaseInsensitive));});
     for(int page=0;page<labels.size();++page){
         auto scroll=new QScrollArea;scroll->setWidgetResizable(true);auto content=new QWidget;auto layout=new QVBoxLayout(content);layout->setContentsMargins(24,4,24,24);layout->setSpacing(18);
@@ -409,19 +416,22 @@ void RedesignShell::openSettings(int selectedPage)
         }else if(page==3){
             auto text=new QLabel("Space  Play / pause\nF  Fullscreen\nS  Stop\nN / P  Next / previous\nCtrl+O  Open media\nCtrl+Q  Quit\n\nVLC's existing hotkeys and advanced control customization are preserved.");text->setWordWrap(true);layout->addWidget(text);
         }else if(page==4){
-            auto rate=new QDoubleSpinBox;rate->setRange(.25,4);rate->setSingleStep(.25);rate->setSuffix(" x");rate->setValue(var_GetFloat(THEPL,"rate"));form->addRow("Playback speed",rate);connect(rate,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this](double v){var_SetFloat(THEPL,"rate",v);});
-            auto loop=new QCheckBox("Repeat playlist");loop->setChecked(var_GetBool(THEPL,"loop"));form->addRow(loop);connect(loop,&QCheckBox::toggled,this,[this](bool b){var_SetBool(THEPL,"loop",b);});
-            auto shuffle=new QCheckBox("Shuffle");shuffle->setChecked(var_GetBool(THEPL,"random"));form->addRow(shuffle);connect(shuffle,&QCheckBox::toggled,this,[this](bool b){var_SetBool(THEPL,"random",b);});
+            auto rate=new QDoubleSpinBox;rate->setRange(.25,4);rate->setSingleStep(.25);rate->setSuffix(" x");rate->setValue(var_GetFloat(THEPL,"rate"));form->addRow("Playback speed",rate);connect(rate,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this](double v){var_SetFloat(THEPL,"rate",v);config_PutFloat(p_intf,"rate",v);config_SaveConfigFile(p_intf);});
+            auto loop=new QCheckBox("Repeat playlist");loop->setChecked(var_GetBool(THEPL,"loop"));form->addRow(loop);connect(loop,&QCheckBox::toggled,this,[this](bool b){var_SetBool(THEPL,"loop",b);config_PutInt(p_intf,"loop",b);config_SaveConfigFile(p_intf);});
+            auto shuffle=new QCheckBox("Shuffle");shuffle->setChecked(var_GetBool(THEPL,"random"));form->addRow(shuffle);connect(shuffle,&QCheckBox::toggled,this,[this](bool b){var_SetBool(THEPL,"random",b);config_PutInt(p_intf,"random",b);config_SaveConfigFile(p_intf);});
         }else if(page==6){
             auto equalizer=new Equalizer(p_intf,content);layout->addWidget(equalizer);
+            for(QSlider *slider:equalizer->findChildren<QSlider*>())if(slider->orientation()==Qt::Vertical)slider->setMinimumHeight(260);
             connect(equalizer,&Equalizer::configChanged,this,[this](const QString &name,const QVariant &value){
                 if(value.type()==QVariant::String)config_PutPsz(p_intf,qtu(name),qtu(value.toString()));
-                else if(value.type()==QVariant::Double)config_PutFloat(p_intf,qtu(name),value.toDouble());
+                else if(value.userType()==QMetaType::Double||value.userType()==QMetaType::Float)config_PutFloat(p_intf,qtu(name),value.toDouble());
                 else config_PutInt(p_intf,qtu(name),value.toInt());
                 config_SaveConfigFile(p_intf);
             });
         }else if(page==7){
-            auto delay=new QDoubleSpinBox;delay->setDecimals(3);delay->setRange(-600,600);delay->setSingleStep(.1);delay->setSuffix(" s");delay->setEnabled(THEMIM->getIM()->hasInput());if(THEMIM->getInput())delay->setValue(var_GetInteger(THEMIM->getInput(),"spu-delay")/double(CLOCK_FREQ));form->addRow("Subtitle track delay",delay);
+            auto delay=new QDoubleSpinBox;delay->setObjectName("subtitleDelay");delay->setDecimals(3);delay->setRange(-600,600);delay->setSingleStep(.1);delay->setSuffix(" s");form->addRow("Subtitle track delay",delay);
+            auto updateDelay=[this,delay]{QSignalBlocker blocked(delay);auto input=THEMIM->getInput();delay->setEnabled(input!=nullptr);delay->setValue(input?var_GetInteger(input,"spu-delay")/double(CLOCK_FREQ):0);};
+            updateDelay();connect(THEMIM,&MainInputManager::inputChanged,delay,[updateDelay](bool){updateDelay();});connect(THEMIM->getIM(),&InputManager::synchroChanged,delay,updateDelay);
             connect(delay,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this](double v){if(THEMIM->getInput())var_SetInteger(THEMIM->getInput(),"spu-delay",llround(v*CLOCK_FREQ));});
             auto add=new QPushButton("Load subtitle file");form->addRow(add);connect(add,&QPushButton::clicked,THEAM,[this]{THEAM->doAction(OPEN_SUB_ACTION);});
             auto sync=new QPushButton("Track synchronization and subtitle controls");layout->addWidget(sync);connect(sync,&QPushButton::clicked,THEDP,&DialogsProvider::extendedDialog);
@@ -440,4 +450,46 @@ void RedesignShell::openSettings(int selectedPage)
     connect(nav,&QListWidget::currentRowChanged,stack,&QStackedWidget::setCurrentIndex);nav->setCurrentRow(selectedPage);
     auto close=new QPushButton("Close");auto buttons=new QHBoxLayout;buttons->addStretch();buttons->addWidget(close);root->addLayout(buttons);connect(close,&QPushButton::clicked,settingsDialog,&QDialog::close);
     settingsDialog->show();
+}
+
+/* An opt-in integration check drives the actual widgets and checks VLC state.
+ * It runs only when the private CLI smoke option is supplied. */
+void RedesignShell::runSmoke(const QString &reportPath)
+{
+    auto report=[this,reportPath](const QString &result){
+        QFile file(reportPath);if(file.open(QIODevice::WriteOnly))file.write(result.toUtf8());
+        window->grab().save(reportPath+".player.png");
+        if(settingsDialog)settingsDialog->grab().save(reportPath+".settings.png");
+        THEDP->quit();
+    };
+    if(!THEMIM->getInput()){report("FAIL: input did not start");return;}
+    const QStringList parts=elapsed->text().split(':');
+    if(parts.size()!=3||parts[0].toInt()!=0||parts[1].toInt()!=0||parts[2].toInt()>30){report("FAIL: elapsed-time units");return;}
+    playButton->click();
+    QTimer::singleShot(250,this,[this,report]{
+        auto input=THEMIM->getInput();
+        if(!input||var_GetInteger(input,"state")!=PAUSE_S){report("FAIL: pause control");return;}
+        playButton->click();seek->setValue(30000);
+        QTimer::singleShot(250,this,[this,report]{
+            auto input=THEMIM->getInput();
+            if(!input||var_GetInteger(input,"state")!=PLAYING_S){report("FAIL: resume control");return;}
+            if(std::abs(var_GetFloat(input,"position")-.3f)>.1f){report("FAIL: seek control");return;}
+            showLibrary("Playlists");
+            if(!window->isPlaylistVisible()){report("FAIL: playlist control");return;}
+            window->togglePlaylist();
+            openSettings(0);openSettings(6);
+            auto nav=settingsDialog->findChild<QListWidget *>("settingsNav");
+            if(!nav||nav->currentRow()!=6){report("FAIL: settings navigation");return;}
+            auto preamp=settingsDialog->findChild<QSlider *>("preampSlider");
+            if(!preamp){report("FAIL: equalizer widget");return;}
+            preamp->setValue(73);
+            if(std::abs(config_GetFloat(p_intf,"equalizer-preamp")-7.3f)>.05f){report("FAIL: equalizer config type");return;}
+            openSettings(7);auto delay=settingsDialog->findChild<QDoubleSpinBox *>("subtitleDelay");
+            if(!delay||!delay->isEnabled()){report("FAIL: subtitle control state");return;}
+            delay->setValue(.25);
+            if(var_GetInteger(THEMIM->getInput(),"spu-delay")!=CLOCK_FREQ/4){report("FAIL: subtitle delay units");return;}
+            openSettings(6);
+            QTimer::singleShot(250,this,[report]{report("PASS: elapsed time, pause, resume, seek, playlist, settings navigation, equalizer float persistence, subtitle synchronization");});
+        });
+    });
 }

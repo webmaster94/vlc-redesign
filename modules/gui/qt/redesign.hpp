@@ -28,6 +28,8 @@ public:
     RedesignShell(intf_thread_t *, MainInterface *, QWidget *player);
     ~RedesignShell();
     void showPlayer();
+    bool isPlayerVisible() const;
+    void runSmoke(const QString &reportPath);
     void setMinimal(bool);
     void applyTheme();
     void openSettings(int page = 0);

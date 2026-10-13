@@ -14,6 +14,10 @@ browsing and playback controls. Illustrative media artwork was not copied.
 Icons and product identity were drawn for this fork.
 Implementation: webmaster94, 2026.
 
+Inter 3.19 fonts, unmodified, by the Inter Project Authors.
+https://github.com/rsms/inter/releases/tag/v3.19
+SIL Open Font License 1.1, included in fonts/LICENSE.txt.
+
 Source, build and installation scripts:
 https://github.com/webmaster94/vlc-redesign
 

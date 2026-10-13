@@ -33,6 +33,7 @@ def main():
     shutil.copytree(payload, stage, ignore=shutil.ignore_patterns("sdk", "NSIS", "helpers", "languages", "*.nsi", "axvlc.dll", "npvlc.dll", "np*.dll", "vlc.ico", "spad*"))
     (stage / "vlc.exe").rename(stage / "reframe.exe")
     shutil.copy2(repo / "extras/package/redesign/reframe.ico", stage / "reframe.ico")
+    shutil.copy2(repo / "extras/package/redesign/reframe-branding.bmp", stage / "reframe-branding.bmp")
     shutil.copy2(repo / "COPYING.LIB", stage / "COPYING.LIB.txt")
     shutil.copy2(repo / "doc/redesign/credits.txt", stage / "CREDITS.txt")
     shutil.copy2(repo / "README.md", stage / "FORK-README.txt")

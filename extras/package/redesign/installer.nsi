@@ -27,6 +27,8 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "VideoLAN and VLC authors; fork impl
 !define MUI_ABORTWARNING
 !define MUI_ICON "${STAGE}\reframe.ico"
 !define MUI_UNICON "${STAGE}\reframe.ico"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${STAGE}\reframe-branding.bmp"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${STAGE}\reframe-branding.bmp"
 !define MUI_WELCOMEPAGE_TITLE "Welcome to Reframe Setup"
 !define MUI_WELCOMEPAGE_TEXT "Reframe is an unofficial VLC media player fork with an interface adapted from Juxtopposed's VLC Redesign.$\r$\n$\r$\nThis wizard installs Reframe alongside your existing VLC installation.$\r$\n$\r$\nClose Reframe before updating it."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\reframe.exe"
@@ -110,6 +112,7 @@ FunctionEnd
 Section "Uninstall"
   !include "${ASSOCIATIONS_UNINSTALL}"
   DeleteRegKey HKCR "Applications\reframe.exe"
+  Delete "$INSTDIR\plugins\plugins.dat"
   !include "${UNINSTALL_MANIFEST}"
   Delete "$SMPROGRAMS\Reframe\Reframe.lnk"
   Delete "$SMPROGRAMS\Reframe\Uninstall Reframe.lnk"

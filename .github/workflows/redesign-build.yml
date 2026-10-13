@@ -30,7 +30,17 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/build-validation"
           cd "$GITHUB_WORKSPACE/build-validation"
           ../extras/package/win32/build.sh -a x86_64 -p 2>&1 | tee build.log
+      - name: Stage the compiled player
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/build-validation"
           make -C win64 package-win-common
+      - name: Build the NSIS installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/build-validation"
           python3 ../extras/package/redesign/package.py --payload win64/vlc-3.0.24 --output "$GITHUB_WORKSPACE/dist"
           cd "$GITHUB_WORKSPACE"
           git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r1-source.tar.xz
@@ -84,4 +94,7 @@ jobs:
         if: always()
         with:
           name: reframe-windows-preview
-          path: artifacts/preview.png
+          path: |
+            artifacts/preview.png
+            artifacts/controls-player.png
+            artifacts/controls-settings.png

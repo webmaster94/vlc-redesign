@@ -266,6 +266,10 @@ vlc_module_begin ()
     add_string( "qt-redesign-preview", "", "Save a Reframe preview and exit",
                 "PNG path for verifying this application's rendered window", true )
         change_volatile()
+    add_string( "qt-redesign-smoke", "", "Reframe integration test report",
+                "Opt-in widget and playback integration checks", true )
+        change_volatile()
+        change_private()
 
 #ifdef UPDATE_CHECK
     add_bool( "qt-updates-notif", true, UPDATER_TEXT,
@@ -602,10 +606,8 @@ static void *ThreadPlatform( void *obj, char *platform_name )
 #endif
             QSettings::UserScope, "Reframe", "reframe-qt-interface" );
 
-    if( QDate::currentDate().dayOfYear() >= QT_XMAS_JOKE_DAY && var_InheritBool( p_intf, "qt-icon-change" ) )
-        app.setWindowIcon( QIcon::fromTheme( "vlc-xmas", QIcon( ":/logo/vlc128-xmas.png" ) ) );
-    else
-        app.setWindowIcon( QIcon::fromTheme( "vlc", QIcon( ":/logo/vlc256.png" ) ) );
+    // Reframe's own identity for startup dialogs, changed 2026-10-12.
+    app.setWindowIcon( QIcon( QCoreApplication::applicationDirPath() + "/reframe.ico" ) );
 
     /* Initialize the Dialog Provider and the Main Input Manager */
     DialogsProvider::getInstance( p_intf );

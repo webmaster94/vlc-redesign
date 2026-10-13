@@ -286,6 +286,13 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
         } );
     }
     free( preview );
+    char *smoke = var_InheritString( p_intf, "qt-redesign-smoke" );
+    if( smoke && *smoke )
+    {
+        const QString report = QString::fromUtf8( smoke );
+        QTimer::singleShot( 1500, this, [this, report] { redesignShell->runSmoke( report ); } );
+    }
+    free( smoke );
 }
 
 MainInterface::~MainInterface()
@@ -1059,6 +1066,11 @@ void MainInterface::createPlaylist()
 
 void MainInterface::togglePlaylist()
 {
+    if( redesignShell && !redesignShell->isPlayerVisible() )
+    {
+        redesignShell->showPlayer();
+        if( playlistVisible && b_plDocked ) return;
+    }
     if( !playlistWidget ) createPlaylist();
 
     PlaylistDialog *dialog = PlaylistDialog::getInstance( p_intf );

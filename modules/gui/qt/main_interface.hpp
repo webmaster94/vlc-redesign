@@ -98,6 +98,7 @@ public:
     int getControlsVisibilityStatus();
     bool isAdvancedWidgetAvailable();
     bool isPlDocked() { return ( b_plDocked != false ); }
+    bool isPlaylistVisible() const { return playlistVisible; }
     bool isInterfaceFullScreen() { return b_interfaceFullScreen; }
     bool isInterfaceAlwaysOnTop() { return b_interfaceOnTop; }
     StandardPLPanel* getPlaylistView();

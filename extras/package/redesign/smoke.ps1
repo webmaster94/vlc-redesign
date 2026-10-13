@@ -16,7 +16,7 @@ if ((Get-Item -LiteralPath $preview).Length -lt 1000) { throw 'Rendered preview 
 
 # A generated WAV exercises real demux and audio decoding without sample copyright.
 $wave = Join-Path $testRoot 'sample with spaces.wav'
-$samples = [byte[]]::new(16000)
+$samples = [byte[]]::new(240000)
 $stream = [IO.File]::Create($wave)
 $writer = [IO.BinaryWriter]::new($stream)
 $writer.Write([Text.Encoding]::ASCII.GetBytes('RIFF'))
@@ -31,6 +31,16 @@ $sout = "#transcode{acodec=s16l,channels=1,samplerate=8000}:std{access=file,mux=
 $decode = Start-Process -FilePath $app -ArgumentList @('--intf=dummy','--ignore-config','--no-one-instance','--play-and-exit',"--sout=$sout", ('"' + $wave + '"')) -PassThru -WindowStyle Hidden
 if (-not $decode.WaitForExit(30000)) { $decode.Kill(); throw 'Media decoding timed out' }
 if ($decode.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $decoded) -or (Get-Item -LiteralPath $decoded).Length -lt 1000) { throw 'WAV demux/decode/output failed' }
+
+$controlReport = Join-Path $testRoot 'controls.txt'
+$controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--ignore-config','--no-qt-privacy-ask','--aout=dummy',"--qt-redesign-smoke=$controlReport",('"' + $wave + '"')) -PassThru -WindowStyle Hidden
+if (-not $controls.WaitForExit(30000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
+if (-not (Test-Path -LiteralPath $controlReport)) { throw 'Widget and playback integration report was not written' }
+$controlResult = Get-Content -LiteralPath $controlReport -Raw
+if (-not $controlResult.StartsWith('PASS:')) { throw $controlResult }
+Write-Output $controlResult
+Copy-Item -LiteralPath ($controlReport + '.player.png') -Destination (Join-Path $Artifacts 'controls-player.png')
+Copy-Item -LiteralPath ($controlReport + '.settings.png') -Destination (Join-Path $Artifacts 'controls-settings.png')
 
 # Fake stock-VLC registrations make accidental cross-product writes observable.
 $stock = Join-Path $testRoot 'stock-vlc'
