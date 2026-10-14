@@ -24,6 +24,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+/* Reframe changes, 2026-10-13: original accent-colored empty-player cone illustration. */
+
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif

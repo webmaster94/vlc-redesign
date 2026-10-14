@@ -22,6 +22,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+/* Reframe changes, 2026-10-13: native shell integration and fullscreen exit slot. */
+
 #ifndef QVLC_MAIN_INTERFACE_H_
 #define QVLC_MAIN_INTERFACE_H_
 

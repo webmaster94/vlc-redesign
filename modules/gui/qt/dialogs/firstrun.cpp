@@ -21,6 +21,8 @@
  * 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+/* Reframe changes, 2026-10-13: centered privacy choice before library onboarding. */
+
 #include "dialogs/firstrun.hpp"
 
 #include <QCheckBox>

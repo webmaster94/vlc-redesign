@@ -21,6 +21,8 @@
  * 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+/* Reframe changes, 2026-10-13: native privacy dialog and explicit completion signal. */
+
 #include "qt.hpp"
 #include "redesign_controls.hpp"
 

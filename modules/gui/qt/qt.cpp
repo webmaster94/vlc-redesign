@@ -22,6 +22,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+/* Reframe changes, 2026-10-13: isolated identity and private UI regression options. */
+
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
