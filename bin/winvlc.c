@@ -143,10 +143,16 @@ static wchar_t **AdditionalOptions(int argc, wchar_t **argv, int *extra_count)
                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return NULL;
     char bytes[16385];
-    DWORD size = GetFileSize(file, NULL), read = 0;
-    if (size == 0 || size > 16384 || !ReadFile(file, bytes, size, &read, NULL) || read != size)
+    LARGE_INTEGER file_size;
+    DWORD read = 0;
+    if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart <= 0 || file_size.QuadPart > 16384)
+    { CloseHandle(file); return NULL; }
+    const DWORD size = (DWORD)file_size.QuadPart;
+    if (!ReadFile(file, bytes, size, &read, NULL) || read != size)
     { CloseHandle(file); return NULL; }
     CloseHandle(file);
+    /* Reject hidden suffixes instead of silently truncating an edited file. */
+    if (memchr(bytes, 0, size)) return NULL;
     bytes[size] = 0;
     int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, -1, NULL, 0);
     if (!length) return NULL;
@@ -156,7 +162,7 @@ static wchar_t **AdditionalOptions(int argc, wchar_t **argv, int *extra_count)
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, -1, command + 8, length);
     wchar_t **result = CommandLineToArgvW(command, extra_count);
     free(command);
-    if (*extra_count > 512)
+    if (result == NULL || *extra_count < 1 || *extra_count > 512)
     { LocalFree(result); *extra_count = 0; return NULL; }
     return result;
 }

@@ -685,6 +685,7 @@ void RedesignShell::toggleLibraryDock()
     auto header = new QHBoxLayout;
     auto close = button("close");
     auto name = new QLabel("Library");
+    name->setTextFormat(Qt::PlainText);
     header->addWidget(name, 1);
     header->addWidget(close);
     layout->addLayout(header);
@@ -2337,30 +2338,66 @@ void RedesignShell::toggleFullscreen()
 }
 void RedesignShell::checkUpdates()
 {
+    const QString executable = Reframe::systemCurl();
+    if (executable.isEmpty())
+        return;
     auto process = new QProcess(this);
-    connect(
-        process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-        [this, process](int status, QProcess::ExitStatus)
-        {
-            if (status == 0)
+    auto bytes = std::make_shared<QByteArray>();
+    auto failed = std::make_shared<bool>(false);
+    process->setStandardErrorFile(QProcess::nullDevice());
+    connect(process, &QProcess::readyReadStandardOutput, process,
+            [process, bytes, failed]
             {
-                auto data = QJsonDocument::fromJson(process->readAllStandardOutput()).object();
-                const auto tag = data.value("tag_name").toString();
-                if (QVersionNumber::compare(QVersionNumber::fromString(tag.mid(tag.startsWith('v') ? 1 : 0)),
-                                            QVersionNumber(0, 3, 0)) > 0 &&
-                    tag != getSettings()->value("Redesign/lastRelease").toString())
+                const QByteArray chunk = process->read(128 * 1024 - bytes->size() + 1);
+                if (bytes->size() + chunk.size() > 128 * 1024)
                 {
-                    getSettings()->setValue("Redesign/lastRelease", tag);
-                    if (QMessageBox::question(window, "Reframe update",
-                                              tag + " is available. Open the release page?") ==
-                        QMessageBox::Yes)
-                        QDesktopServices::openUrl(QUrl(data.value("html_url").toString()));
+                    *failed = true;
+                    process->kill();
                 }
-            }
-            process->deleteLater();
-        });
-    process->start("curl.exe",
-                   QStringList() << "--silent"
+                else
+                    *bytes += chunk;
+            });
+    QTimer::singleShot(20000, process,
+                       [process]
+                       {
+                           if (process->state() != QProcess::NotRunning)
+                               process->kill();
+                       });
+    connect(process, &QProcess::errorOccurred, process,
+            [process](QProcess::ProcessError error)
+            {
+                if (error == QProcess::FailedToStart)
+                    process->deleteLater();
+            });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, process, bytes, failed](int status, QProcess::ExitStatus)
+            {
+                if (status == 0 && !*failed)
+                {
+                    auto data = QJsonDocument::fromJson(*bytes).object();
+                    const auto tag = data.value("tag_name").toString();
+                    if (QRegularExpression("^v[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}$").match(tag).hasMatch() &&
+                        QVersionNumber::compare(QVersionNumber::fromString(tag.mid(1)),
+                                                QVersionNumber(0, 4, 0)) > 0 &&
+                        tag != getSettings()->value("Redesign/lastRelease").toString())
+                    {
+                        getSettings()->setValue("Redesign/lastRelease", tag);
+                        if (QMessageBox::question(window, "Reframe update",
+                                                  tag + " is available. Open the release page?") ==
+                            QMessageBox::Yes)
+                            QDesktopServices::openUrl(
+                                QUrl("https://github.com/webmaster94/vlc-redesign/releases/tag/" + tag));
+                    }
+                }
+                process->deleteLater();
+            });
+    process->start(executable,
+                   QStringList() << "-q"
+                                 << "--proto"
+                                 << "=https"
+                                 << "--max-filesize"
+                                 << "131072"
+                                 << "--silent"
                                  << "--fail"
                                  << "--max-time"
                                  << "15"

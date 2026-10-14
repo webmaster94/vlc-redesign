@@ -5,6 +5,7 @@
 #endif
 #include "redesign.hpp"
 #include "redesign_controls.hpp"
+#include "redesign_image.hpp"
 #include "main_interface.hpp"
 #include "dialogs_provider.hpp"
 #include "input_manager.hpp"
@@ -221,14 +222,14 @@ void RedesignShell::renderHome()
                 const auto data = getSettings()->value("Redesign/collection/" + path.mid(11)).toMap();
                 title = data.value("name").toString();
                 if (!data.value("thumbnail").toString().isEmpty())
-                    icon = QIcon(data.value("thumbnail").toString());
+                    icon = Reframe::safeArtwork(data.value("thumbnail").toString());
             }
             else if (QFileInfo(path).isDir())
                 icon = Reframe::icon("folder");
             else if (QFileInfo(thumbnails.value(localPath)).size() > 0)
-                icon = QIcon(thumbnails.value(localPath));
+                icon = Reframe::safeArtwork(thumbnails.value(localPath));
             else if (QUrl(metadata.value(path).value("art").toString()).isLocalFile())
-                icon = QIcon(QUrl(metadata.value(path).value("art").toString()).toLocalFile());
+                icon = Reframe::safeArtwork(QUrl(metadata.value(path).value("art").toString()).toLocalFile());
             auto item = new QListWidgetItem(icon, title.isEmpty() ? path : title, list);
             item->setData(Qt::UserRole, path);
             const QUrl uri(path);
@@ -324,7 +325,9 @@ void RedesignShell::mediaProperties(const QString &path)
     dialog->body->addLayout(layout);
     const QFileInfo file(path);
     const auto data = metadata.value(path);
-    layout->addRow("File", new QLabel(file.fileName()));
+    auto filename = new QLabel(file.fileName());
+    filename->setTextFormat(Qt::PlainText);
+    layout->addRow("File", filename);
     auto address = new QLineEdit(path);
     address->setReadOnly(true);
     layout->addRow("Location", address);

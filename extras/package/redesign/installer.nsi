@@ -6,7 +6,7 @@ Unicode true
 !include x64.nsh
 
 !define PRODUCT "Reframe"
-!define VERSION "3.0.24-r3"
+!define VERSION "3.0.24-r4"
 !define REGKEY "Software\Reframe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Reframe"
 Name "${PRODUCT}"
@@ -18,7 +18,7 @@ ManifestDPIAware true
 SetCompressor /SOLID lzma
 SetOverwrite on
 BrandingText "Reframe - unofficial VLC fork"
-VIProductVersion "3.0.24.3"
+VIProductVersion "3.0.24.4"
 VIAddVersionKey /LANG=1033 "ProductName" "Reframe"
 VIAddVersionKey /LANG=1033 "FileDescription" "Reframe media player setup"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
@@ -31,8 +31,9 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "VideoLAN and VLC authors; fork impl
 !define MUI_UNWELCOMEFINISHPAGE_BITMAP "${STAGE}\reframe-branding.bmp"
 !define MUI_WELCOMEPAGE_TITLE "Welcome to Reframe Setup"
 !define MUI_WELCOMEPAGE_TEXT "Reframe is an unofficial VLC media player fork with an interface adapted from Juxtopposed's VLC Redesign.$\r$\n$\r$\nThis wizard installs Reframe alongside your existing VLC installation.$\r$\n$\r$\nClose Reframe before updating it."
-!define MUI_FINISHPAGE_RUN "$INSTDIR\reframe.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Run Reframe"
+; This installer is elevated. Exec would make the media player inherit that token,
+; including when it reads ordinary user settings or decodes untrusted media.
+!define MUI_FINISHPAGE_TEXT "Reframe has been installed.$\r$\n$\r$\nStart Reframe from the Start Menu or its desktop shortcut after closing this installer."
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${STAGE}\COPYING.GPL3.txt"
 !insertmacro MUI_PAGE_COMPONENTS

@@ -5,6 +5,7 @@
 #include "config.h"
 #endif
 #include "redesign_seek.hpp"
+#include "redesign_image.hpp"
 #include "input_manager.hpp"
 #include <vlc_configuration.h>
 #include <vlc_input.h>
@@ -34,19 +35,10 @@ QString clock(qint64 value)
         .arg(value / 60 % 60, 2, 10, QChar('0'))
         .arg(value % 60, 2, 10, QChar('0'));
 }
-double cueTime(const QString &s)
-{
-    auto parts = s.trimmed().replace(',', '.').split(':');
-    if (parts.size() == 3)
-        return parts[0].toDouble() * 3600 + parts[1].toDouble() * 60 + parts[2].toDouble();
-    if (parts.size() == 2)
-        return parts[0].toDouble() * 60 + parts[1].toDouble();
-    return 0;
-}
 } // namespace
 RedesignSeek::RedesignSeek(intf_thread_t *intf, QWidget *parent)
     : QSlider(Qt::Horizontal, parent), p_intf(intf), debounce(this), preview(nullptr), process(nullptr),
-      hoverTime(0), duration(0), draggingSubtitles(false), originalDelay(0)
+      waveformProcess(nullptr), hoverTime(0), duration(0), draggingSubtitles(false), originalDelay(0)
 {
     setMouseTracking(true);
     setMinimumHeight(30);
@@ -80,15 +72,47 @@ RedesignSeek::RedesignSeek(intf_thread_t *intf, QWidget *parent)
 }
 RedesignSeek::~RedesignSeek()
 {
-    if (process)
-    {
-        process->kill();
-        process->waitForFinished(1000);
-    }
+    stopJobs();
     delete preview;
+}
+void RedesignSeek::stopJobs()
+{
+    debounce.stop();
+    for (auto job : {process, waveformProcess})
+        if (job)
+        {
+            // waitForFinished can deliver finished/error synchronously. Disconnect
+            // before cancellation so an old callback cannot clear the new job.
+            disconnect(job, nullptr, this, nullptr);
+            job->kill();
+            job->waitForFinished(1000);
+            delete job;
+        }
+    process = waveformProcess = nullptr;
+    if (!waveformOutput.isEmpty())
+        QFile::remove(waveformOutput);
+    waveformOutput.clear();
+}
+void RedesignSeek::trimCache()
+{
+    const auto entries = QDir(cache).entryInfoList(QStringList() << "*.raw"
+                                                                 << "*.png",
+                                                   QDir::Files | QDir::NoSymLinks, QDir::Time);
+    qint64 retained = 0;
+    for (const auto &entry : entries)
+    {
+        if (entry.absoluteFilePath() == waveformOutput)
+            continue;
+        retained += entry.size();
+        if (retained > 64 * 1024 * 1024)
+            QFile::remove(entry.absoluteFilePath());
+    }
 }
 void RedesignSeek::refreshMedia()
 {
+    stopJobs();
+    preview->hide();
+    draggingSubtitles = false;
     cues.clear();
     waveform.clear();
     auto item = THEMIM->currentInputItem();
@@ -108,40 +132,15 @@ void RedesignSeek::refreshMedia()
         if (QFileInfo::exists(candidate))
             subtitle = candidate;
     }
-    loadCues();
+    if (getSettings()->value("Redesign/subtitleTimeline", false).toBool())
+        loadCues();
     if (getSettings()->value("Redesign/waveform", false).toBool())
         decodeWaveform();
     update();
 }
 void RedesignSeek::loadCues()
 {
-    QFile file(subtitle);
-    if (!file.open(QIODevice::ReadOnly))
-        return;
-    const QString text = QString::fromUtf8(file.readAll()).replace("\r", "");
-    const auto blocks = text.split(QRegularExpression("\n\\s*\n"), QString::SkipEmptyParts);
-    for (const auto &block : blocks)
-    {
-        const auto lines = block.split('\n');
-        for (int i = 0; i < lines.size(); ++i)
-        {
-            if (!lines[i].contains("-->"))
-                continue;
-            const auto times = lines[i].split("-->");
-            if (times.size() != 2)
-                continue;
-            Cue cue;
-            cue.from = cueTime(times[0]);
-            const auto end = times[1].trimmed().split(' ', QString::SkipEmptyParts);
-            if (end.isEmpty())
-                continue;
-            cue.to = cueTime(end.first());
-            cue.text = QStringList(lines.mid(i + 1)).join(' ');
-            cue.text.remove(QRegularExpression("<[^>]+>"));
-            cues << cue;
-            break;
-        }
-    }
+    cues = ReframeSeekData::loadCues(subtitle);
 }
 void RedesignSeek::paintEvent(QPaintEvent *)
 {
@@ -158,7 +157,7 @@ void RedesignSeek::paintEvent(QPaintEvent *)
     fill.setAlpha(65);
     p.setBrush(fill);
     p.drawRoundedRect(QRectF(3, 4, (width() - 6) * position, h), 5, 5);
-    if (getSettings()->value("Redesign/waveform", false).toBool() && !waveform.isEmpty())
+    if (getSettings()->value("Redesign/waveform", false).toBool() && !waveform.isEmpty() && duration <= 1800)
     {
         p.setPen(QPen(palette().highlight().color(), 1));
         for (int x = 4; x < width() - 4; x += 2)
@@ -254,24 +253,28 @@ void RedesignSeek::thumbnail()
     const QString output = cache + "/" + token + ".png";
     if (QFileInfo(output).size() > 0)
     {
-        image->setPixmap(
-            QPixmap(output).scaled(image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        image->setPixmap(Reframe::safeArtwork(output).pixmap(image->size()));
         return;
     }
     if (process)
         return;
     process = new QProcess(this);
     auto job = process;
+    job->setStandardOutputFile(QProcess::nullDevice());
+    job->setStandardErrorFile(QProcess::nullDevice());
+    trimCache();
     const QString requested = media;
     const int time = hoverTime;
     connect(job, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             [this, job, output, requested, time](int, QProcess::ExitStatus)
             {
+                if (process != job)
+                    return;
                 process = nullptr;
                 job->deleteLater();
+                trimCache();
                 if (requested == media && time == hoverTime && QFileInfo(output).size() > 0)
-                    image->setPixmap(
-                        QPixmap(output).scaled(image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                    image->setPixmap(Reframe::safeArtwork(output).pixmap(image->size()));
                 else if (preview->isVisible())
                     debounce.start();
             });
@@ -303,6 +306,7 @@ void RedesignSeek::thumbnail()
                              << "--video-filter=scene"
                              << "--scene-format=png"
                              << "--scene-width=256"
+                             << "--scene-height=144"
                              << "--scene-ratio=1"
                              << "--scene-replace" << QString("--scene-path=" + cache)
                              << QString("--scene-prefix=" + token)
@@ -312,7 +316,7 @@ void RedesignSeek::thumbnail()
 }
 void RedesignSeek::decodeWaveform()
 {
-    if (media.isEmpty())
+    if (media.isEmpty() || waveformProcess || duration > 1800)
         return;
     const QString output =
         cache + "/" +
@@ -320,23 +324,7 @@ void RedesignSeek::decodeWaveform()
         ".raw";
     auto load = [this, output]
     {
-        QFile file(output);
-        if (!file.open(QIODevice::ReadOnly))
-            return;
-        const QByteArray data = file.readAll();
-        const int samples = data.size() / 2;
-        if (!samples)
-            return;
-        waveform.clear();
-        for (int bin = 0; bin < 1024; ++bin)
-        {
-            float peak = 0;
-            for (int i = int(qint64(bin) * samples / 1024); i < int(qint64(bin + 1) * samples / 1024); ++i)
-                peak = qMax(peak, qAbs(int(qFromLittleEndian<qint16>(
-                                      reinterpret_cast<const uchar *>(data.constData()) + i * 2))) /
-                                      32768.f);
-            waveform << peak;
-        }
+        waveform = ReframeSeekData::loadWaveform(output);
         update();
     };
     if (QFileInfo(output).size() > 0)
@@ -344,14 +332,37 @@ void RedesignSeek::decodeWaveform()
         load();
         return;
     }
-    auto job = new QProcess(this);
+    trimCache();
+    auto job = waveformProcess = new QProcess(this);
+    waveformOutput = output;
+    job->setStandardOutputFile(QProcess::nullDevice());
+    job->setStandardErrorFile(QProcess::nullDevice());
     const QString requested = media;
     connect(job, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, job, load, requested](int, QProcess::ExitStatus)
+            [this, job, load, requested, output](int status, QProcess::ExitStatus exitStatus)
             {
-                if (media == requested)
+                if (waveformProcess != job)
+                    return;
+                waveformProcess = nullptr;
+                waveformOutput.clear();
+                if (status == 0 && exitStatus == QProcess::NormalExit && media == requested &&
+                    QFileInfo(output).size() <= ReframeSeekData::MaxWaveformBytes)
                     load();
+                else
+                    QFile::remove(output);
                 job->deleteLater();
+                trimCache();
+            });
+    connect(job, &QProcess::errorOccurred, this,
+            [this, job, output](QProcess::ProcessError error)
+            {
+                if (error == QProcess::FailedToStart && waveformProcess == job)
+                {
+                    waveformProcess = nullptr;
+                    waveformOutput.clear();
+                    QFile::remove(output);
+                    job->deleteLater();
+                }
             });
     const QString path = QString(output).replace("'", "\\'");
     job->start(
@@ -362,11 +373,23 @@ void RedesignSeek::decodeWaveform()
             << "--no-one-instance"
             << "--no-video"
             << "--no-metadata-network-access"
+            << "--stop-time=1800"
             << QString(
                    "--sout=#transcode{acodec=s16l,channels=1,samplerate=8000}:std{access=file,mux=raw,dst='" +
                    path + "'}")
             << "--play-and-exit" << media);
-    QTimer::singleShot(120000, job,
+    // The stop time caps PCM at 28.8 MB. Also enforce a byte budget for malformed
+    // streams and ensure seeking between items cannot accumulate decoder jobs.
+    auto budget = new QTimer(job);
+    budget->setInterval(100);
+    connect(budget, &QTimer::timeout, job,
+            [job, output]
+            {
+                if (QFileInfo(output).size() > ReframeSeekData::MaxWaveformBytes)
+                    job->kill();
+            });
+    budget->start();
+    QTimer::singleShot(30000, job,
                        [job]
                        {
                            if (job->state() != QProcess::NotRunning)

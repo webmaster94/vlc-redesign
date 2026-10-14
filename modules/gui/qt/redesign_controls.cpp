@@ -17,9 +17,27 @@
 #include <QShowEvent>
 #include <QStyledItemDelegate>
 #include <cmath>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace Reframe
 {
+QString systemCurl()
+{
+#ifdef Q_OS_WIN
+    wchar_t directory[MAX_PATH];
+    const UINT length = GetSystemDirectoryW(directory, MAX_PATH);
+    if (!length || length >= MAX_PATH)
+        return QString();
+    return QString::fromWCharArray(directory, int(length)) + "/curl.exe";
+#else
+    return QString();
+#endif
+}
 class ChoiceDelegate : public QStyledItemDelegate
 {
   public:

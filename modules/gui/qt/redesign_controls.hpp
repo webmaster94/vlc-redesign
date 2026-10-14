@@ -16,6 +16,8 @@ class QAbstractItemDelegate;
 class QSizeGrip;
 namespace Reframe
 {
+// Network helpers must not resolve executables through a user-controlled PATH or cwd.
+QString systemCurl();
 QAbstractItemDelegate *mediaDelegate(QObject *);
 QAbstractItemDelegate *choiceDelegate(QObject *);
 QStringList defaultToolbar();

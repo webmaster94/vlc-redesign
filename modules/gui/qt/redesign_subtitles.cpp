@@ -26,6 +26,8 @@
 #include <QDesktopServices>
 #include <QCryptographicHash>
 #include <memory>
+#include <QTimer>
+#include <QPointer>
 
 namespace
 {
@@ -35,12 +37,38 @@ QString quoted(QString text)
     return "\"" + text.replace('\\', "\\\\").replace('"', "\\\"").replace('\r', "").replace('\n', "\\n") +
            "\"";
 }
-void request(QWidget *owner, const QUrl &url, const QString &key, const QString &token,
+bool safeHeader(const QString &text)
+{
+    if (text.size() > 8192)
+        return false;
+    for (const auto character : text)
+        if (character.unicode() < 32 || character.unicode() == 127)
+            return false;
+    return true;
+}
+bool safeDestination(const QUrl &url, bool credentialed)
+{
+    if (!url.isValid() || url.scheme() != "https" || url.host().isEmpty() ||
+        url.authority(QUrl::FullyEncoded).contains('@') || url.hasFragment())
+        return false;
+    if (!credentialed)
+        return true;
+    return (url.host() == "api.opensubtitles.com" || url.host() == "vip-api.opensubtitles.com") &&
+           (url.port() == -1 || url.port() == 443) && url.path().startsWith("/api/v1/");
+}
+void request(QObject *owner, const QUrl &url, const QString &key, const QString &token,
              const QJsonObject &body, Response done)
 {
-    if (url.scheme() != "https")
+    const bool credentialed = !key.isEmpty() || !token.isEmpty() || !body.isEmpty();
+    if (!safeDestination(url, credentialed) || !safeHeader(key) || !safeHeader(token))
     {
-        done(QByteArray(), "The service returned a non-HTTPS address.");
+        done(QByteArray(), "The service returned an unsafe address or credential header.");
+        return;
+    }
+    const QString executable = Reframe::systemCurl();
+    if (executable.isEmpty())
+    {
+        done(QByteArray(), "The trusted Windows curl client is unavailable.");
         return;
     }
     QString config = "url = " + quoted(url.toString(QUrl::FullyEncoded)) + "\n";
@@ -54,9 +82,54 @@ void request(QWidget *owner, const QUrl &url, const QString &key, const QString 
         config +=
             "data = " + quoted(QString::fromUtf8(QJsonDocument(body).toJson(QJsonDocument::Compact))) + "\n";
     }
+    struct State
+    {
+        QByteArray output;
+        qint64 errors = 0;
+        bool complete = false;
+        bool oversized = false;
+    };
     auto process = new QProcess(owner);
     process->setObjectName("subtitleRequest");
-    auto complete = std::make_shared<bool>(false);
+    auto state = std::make_shared<State>();
+    // Bound our buffers independently of curl's version and Content-Length handling.
+    auto drain = [process, state]
+    {
+        const qint64 outputLimit = 10485760 + 16; // Body plus the HTTP status trailer.
+        const qint64 errorLimit = 65536;
+        process->setReadChannel(QProcess::StandardOutput);
+        while (process->bytesAvailable() && !state->oversized)
+        {
+            const QByteArray chunk =
+                process->read(qMin<qint64>(16384, outputLimit - state->output.size() + 1));
+            if (state->output.size() + chunk.size() > outputLimit)
+                state->oversized = true;
+            else
+                state->output += chunk;
+        }
+        process->setReadChannel(QProcess::StandardError);
+        while (process->bytesAvailable() && !state->oversized)
+        {
+            const QByteArray chunk = process->read(qMin<qint64>(16384, errorLimit - state->errors + 1));
+            state->errors += chunk.size();
+            if (state->errors > errorLimit)
+                state->oversized = true;
+        }
+        if (state->oversized)
+            process->kill();
+    };
+    const QPointer<QProcess> guardedProcess(process);
+    auto finish = [guardedProcess, state, done](QByteArray bytes, const QString &error)
+    {
+        if (state->complete)
+            return;
+        state->complete = true;
+        done(bytes, error);
+        if (guardedProcess)
+            guardedProcess->deleteLater();
+    };
+    QObject::connect(process, &QProcess::readyReadStandardOutput, owner, drain);
+    QObject::connect(process, &QProcess::readyReadStandardError, owner, drain);
     QObject::connect(process, &QProcess::started, owner,
                      [process, config]
                      {
@@ -64,42 +137,82 @@ void request(QWidget *owner, const QUrl &url, const QString &key, const QString 
                          process->closeWriteChannel();
                      });
     QObject::connect(process, &QProcess::errorOccurred, owner,
-                     [process, complete, done](QProcess::ProcessError error)
+                     [finish](QProcess::ProcessError error)
                      {
-                         if (error != QProcess::FailedToStart || *complete)
-                             return;
-                         *complete = true;
-                         done(QByteArray(),
-                              "Windows curl.exe could not start. Check that curl is installed.");
-                         process->deleteLater();
+                         if (error == QProcess::FailedToStart)
+                             finish(QByteArray(), "The trusted Windows curl client could not start.");
                      });
-    QObject::connect(
-        process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), owner,
-        [process, complete, done](int exit, QProcess::ExitStatus state)
-        {
-            if (*complete)
-                return;
-            *complete = true;
-            QByteArray bytes = process->readAllStandardOutput();
-            const int separator = bytes.lastIndexOf('\n');
-            const int http = bytes.mid(separator + 1).trimmed().toInt();
-            bytes.truncate(qMax(0, separator));
-            QString error;
-            if (exit || state != QProcess::NormalExit)
-                error = "The connection failed or timed out. Try again.";
-            else if (http < 200 || http >= 300)
-            {
-                const auto message = QJsonDocument::fromJson(bytes).object().value("message").toString();
-                error = message.isEmpty() ? QString("OpenSubtitles returned HTTP %1.").arg(http) : message;
-            }
-            done(bytes, error);
-            process->deleteLater();
-        });
-    // Credentials travel through stdin, never the command line or a shell.
-    process->start("curl.exe", QStringList({"--silent", "--show-error", "--location", "--proto", "=https",
-                                            "--proto-redir", "=https", "--max-time", "30", "--max-filesize",
-                                            "10485760", "--user-agent", "Reframe v0.2.0", "--write-out",
-                                            "\n%{http_code}", "--config", "-"}));
+    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), owner,
+                     [process, state, drain, finish](int exit, QProcess::ExitStatus status)
+                     {
+                         if (state->complete)
+                             return;
+                         drain();
+                         if (state->oversized)
+                         {
+                             finish(QByteArray(), "The service response exceeded the size limit.");
+                             return;
+                         }
+                         QByteArray bytes = state->output;
+                         const int separator = bytes.lastIndexOf('\n');
+                         bool validStatus = false;
+                         const int http = bytes.mid(separator + 1).trimmed().toInt(&validStatus);
+                         bytes.truncate(qMax(0, separator));
+                         QString error;
+                         if (exit || status != QProcess::NormalExit)
+                             error = "The connection failed or timed out. Try again.";
+                         else if (!validStatus || http < 200 || http >= 300)
+                         {
+                             const auto message =
+                                 QJsonDocument::fromJson(bytes).object().value("message").toString();
+                             error = message.isEmpty() ? QString("OpenSubtitles returned HTTP %1.").arg(http)
+                                                       : message.left(4096);
+                         }
+                         finish(bytes, error);
+                     });
+    auto watchdog = new QTimer(process);
+    watchdog->setSingleShot(true);
+    QObject::connect(watchdog, &QTimer::timeout, owner,
+                     [process, finish]
+                     {
+                         process->kill();
+                         finish(QByteArray(), "The connection timed out. Try again.");
+                     });
+    watchdog->start(35000);
+    QObject::connect(owner, &QObject::destroyed, process,
+                     [process, state]
+                     {
+                         state->complete = true;
+                         if (process->state() == QProcess::Starting)
+                             process->waitForStarted(1000);
+                         process->kill();
+                         process->waitForFinished(1000);
+                     });
+    // -q must come first to disable ambient .curlrc settings. Credentials use stdin.
+    QStringList arguments = {"-q",
+                             "--silent",
+                             "--show-error",
+                             "--proto",
+                             "=https",
+                             "--proto-redir",
+                             "=https",
+                             "--max-time",
+                             "30",
+                             "--connect-timeout",
+                             "10",
+                             "--max-filesize",
+                             "10485760",
+                             "--user-agent",
+                             "Reframe v0.4.0",
+                             "--write-out",
+                             "\n%{http_code}",
+                             "--config",
+                             "-"};
+    if (!credentialed)
+        arguments << "--location"
+                  << "--max-redirs"
+                  << "3";
+    process->start(executable, arguments);
 }
 } // namespace
 
@@ -108,8 +221,8 @@ void RedesignShell::openSubtitles(QWidget *owner, QTableWidget *bindings)
     auto dialog = new Reframe::Dialog(owner, "Find Subtitles", QSize(1048, 800));
     auto connection = std::make_shared<QVariantMap>();
     QFile packaged(QCoreApplication::applicationDirPath() + "/opensubtitles-app-key.txt");
-    if (packaged.open(QIODevice::ReadOnly))
-        (*connection)["key"] = QString::fromUtf8(packaged.readAll()).trimmed();
+    if (packaged.open(QIODevice::ReadOnly) && packaged.size() <= 8192)
+        (*connection)["key"] = QString::fromUtf8(packaged.read(8193)).trimmed();
     if (connection->value("key").toString().isEmpty())
         (*connection)["key"] = getSettings()->value("OpenSubtitles/applicationKey");
     (*connection)["base"] = "https://api.opensubtitles.com/api/v1";
@@ -137,30 +250,6 @@ void RedesignShell::openSubtitles(QWidget *owner, QTableWidget *bindings)
     login->addRow("Password", password);
     login->addRow(new QLabel("Your password and session token are not saved."));
     dialog->body->addWidget(Reframe::fold("OpenSubtitles Account", account, dialog));
-    if (connection->value("key").toString().isEmpty())
-    {
-        auto setup = new QWidget;
-        auto form = new QFormLayout(setup);
-        auto note =
-            new QLabel("The app publisher must register one key for this app. Users share that app key; "
-                       "they do not need to register their own application.");
-        note->setWordWrap(true);
-        form->addRow(note);
-        auto key = new QLineEdit;
-        key->setEchoMode(QLineEdit::Password);
-        form->addRow("App publisher key", key);
-        auto registration = new QPushButton("Register the app");
-        form->addRow(registration);
-        QObject::connect(registration, &QPushButton::clicked, dialog,
-                         [] { QDesktopServices::openUrl(QUrl("https://www.opensubtitles.com/consumers")); });
-        QObject::connect(key, &QLineEdit::editingFinished, dialog,
-                         [this, key, connection]
-                         {
-                             (*connection)["key"] = key->text().trimmed();
-                             getSettings()->setValue("OpenSubtitles/applicationKey", key->text().trimmed());
-                         });
-        dialog->body->addWidget(Reframe::fold("App Publisher Setup", setup, dialog, true));
-    }
     auto results = new QListWidget;
     results->setSelectionMode(QAbstractItemView::SingleSelection);
     dialog->body->addWidget(results, 1);
@@ -193,7 +282,7 @@ void RedesignShell::openSubtitles(QWidget *owner, QTableWidget *bindings)
             const QString key = connection->value("key").toString();
             if (key.isEmpty())
             {
-                status->setText("The app publisher has not configured OpenSubtitles access. Use Open website "
+                status->setText("Online subtitle search is unavailable in this build. Use Open website "
                                 "to download files manually.");
                 return;
             }
@@ -214,36 +303,51 @@ void RedesignShell::openSubtitles(QWidget *owner, QTableWidget *bindings)
                 parameters.addQueryItem("query", query->text().trimmed());
                 parameters.addQueryItem("languages", language->text().trimmed());
                 url.setQuery(parameters);
-                request(dialog, url, connection->value("key").toString(),
-                        connection->value("token").toString(), QJsonObject(),
-                        [search, results, status, download](QByteArray bytes, QString error)
+                request(
+                    dialog, url, connection->value("key").toString(), connection->value("token").toString(),
+                    QJsonObject(),
+                    [search, results, status, download](QByteArray bytes, QString error)
+                    {
+                        search->setEnabled(true);
+                        if (!error.isEmpty())
                         {
-                            search->setEnabled(true);
-                            if (!error.isEmpty())
+                            status->setText(error);
+                            return;
+                        }
+                        const auto data = QJsonDocument::fromJson(bytes).object().value("data").toArray();
+                        bool truncated = false;
+                        for (const auto entry : data)
+                        {
+                            if (results->count() >= 500)
                             {
-                                status->setText(error);
-                                return;
+                                truncated = true;
+                                break;
                             }
-                            const auto data = QJsonDocument::fromJson(bytes).object().value("data").toArray();
-                            for (const auto entry : data)
+                            const auto attributes = entry.toObject().value("attributes").toObject();
+                            for (const auto file : attributes.value("files").toArray())
                             {
-                                const auto attributes = entry.toObject().value("attributes").toObject();
-                                for (const auto file : attributes.value("files").toArray())
+                                if (results->count() >= 500)
                                 {
-                                    const auto value = file.toObject();
-                                    auto item =
-                                        new QListWidgetItem(attributes.value("language").toString() + "  " +
-                                                                attributes.value("release").toString() +
-                                                                "  " + value.value("file_name").toString(),
-                                                            results);
-                                    item->setData(Qt::UserRole, value.value("file_id").toInt());
+                                    truncated = true;
+                                    break;
                                 }
+                                const auto value = file.toObject();
+                                auto item = new QListWidgetItem(
+                                    attributes.value("language").toString().left(32) + "  " +
+                                        attributes.value("release").toString().left(1024) + "  " +
+                                        value.value("file_name").toString().left(1024),
+                                    results);
+                                item->setData(Qt::UserRole, value.value("file_id").toInt());
                             }
-                            status->setText(QString("%1 subtitle files found").arg(results->count()));
-                            if (results->count())
-                                results->setCurrentRow(0);
-                            download->setEnabled(results->count() > 0);
-                        });
+                        }
+                        status->setText(
+                            truncated
+                                ? "Showing the first 500 files. Refine the search for more specific results."
+                                : QString("%1 subtitle files found").arg(results->count()));
+                        if (results->count())
+                            results->setCurrentRow(0);
+                        download->setEnabled(results->count() > 0);
+                    });
             };
             if (username->text().isEmpty() || !connection->value("token").toString().isEmpty())
                 find();

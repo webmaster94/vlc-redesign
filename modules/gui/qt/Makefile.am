@@ -52,8 +52,11 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/redesign.cpp gui/qt/redesign.hpp \
 	gui/qt/redesign_controls.cpp gui/qt/redesign_controls.hpp \
 	gui/qt/redesign_settings.cpp gui/qt/redesign_settings.hpp \
+	gui/qt/redesign_profile.cpp gui/qt/redesign_profile.hpp \
+	gui/qt/redesign_image.cpp gui/qt/redesign_image.hpp \
 	gui/qt/redesign_flows.cpp \
 	gui/qt/redesign_seek.cpp gui/qt/redesign_seek.hpp \
+	gui/qt/redesign_seek_data.hpp \
 	gui/qt/redesign_library.cpp \
 	gui/qt/redesign_subtitles.cpp \
 	gui/qt/redesign_audiofocus.cpp \

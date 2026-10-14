@@ -31,6 +31,7 @@
 #endif
 
 #include "qt.hpp"
+#include "redesign_image.hpp"
 #include "components/interface_widgets.hpp"
 #include "dialogs_provider.hpp"
 #include "util/customwidgets.hpp"               // qtEventToVLCKey, QVLCStackedWidget
@@ -505,7 +506,7 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
     }
 
     int i_maxwidth, i_maxheight;
-    QPixmap pixmap = QPixmap( pixmapUrl );
+    QPixmap pixmap = Reframe::safeArtwork(pixmapUrl).pixmap(1024, 1024);
     QPainter painter(this);
 
 #if HAS_QT56

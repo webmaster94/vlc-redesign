@@ -5,6 +5,7 @@
 #include <QSlider>
 #include <QTimer>
 #include <QVector>
+#include "redesign_seek_data.hpp"
 class QProcess;
 class QLabel;
 class RedesignSeek : public QSlider
@@ -15,6 +16,8 @@ class RedesignSeek : public QSlider
     QLabel *image;
     QLabel *stamp;
     QProcess *process;
+    QProcess *waveformProcess;
+    QString waveformOutput;
     QString cache;
     QString media;
     QString subtitle;
@@ -23,16 +26,13 @@ class RedesignSeek : public QSlider
     bool draggingSubtitles;
     QPoint dragStart;
     qint64 originalDelay;
-    struct Cue
-    {
-        double from, to;
-        QString text;
-    };
-    QVector<Cue> cues;
+    QVector<ReframeSeekData::Cue> cues;
     QVector<float> waveform;
     void loadCues();
     void thumbnail();
     void decodeWaveform();
+    void stopJobs();
+    void trimCache();
 
   protected:
     void paintEvent(QPaintEvent *) override;

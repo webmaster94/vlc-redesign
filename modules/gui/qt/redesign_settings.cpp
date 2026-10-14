@@ -9,6 +9,7 @@
 #include "input_manager.hpp"
 #include "actions_manager.hpp"
 #include "redesign.hpp"
+#include "redesign_profile.hpp"
 #include "util/customwidgets.hpp"
 #include "dialogs_provider.hpp"
 #include "recents.hpp"
@@ -389,6 +390,7 @@ void RedesignPreferences::saveAppProfile(const QString &name)
         else
             ++it;
     }
+    settings = Reframe::portableProfile(settings);
     getSettings()->setValue("Redesign/profiles/" + name, settings);
     auto names = getSettings()->value("Redesign/profileNames").toStringList();
     if (name != "Default" && !names.contains(name))
@@ -401,6 +403,20 @@ void RedesignPreferences::restore(const QVariantMap &values)
 {
     for (auto it = values.begin(); it != values.end(); ++it)
     {
+        if (!Reframe::profileValueSafe(it.key(), it.value()))
+            continue;
+        if (auto cfg = config_FindConfig(qtu(it.key())))
+        {
+            const int type = cfg->i_type & 0xF0;
+            if (type == CONFIG_ITEM_INTEGER &&
+                (std::floor(it.value().toDouble()) != it.value().toDouble() ||
+                 (cfg->max.i > cfg->min.i &&
+                  (it.value().toDouble() < cfg->min.i || it.value().toDouble() > cfg->max.i))))
+                continue;
+            if (type == CONFIG_ITEM_FLOAT && cfg->max.f > cfg->min.f &&
+                (it.value().toDouble() < cfg->min.f || it.value().toDouble() > cfg->max.f))
+                continue;
+        }
         if (it.key().startsWith("ordinal:"))
         {
             const QString key = it.key().mid(8);
@@ -1721,59 +1737,70 @@ void RedesignPreferences::profiles()
     {
         auto b = new QPushButton(action);
         buttons->addWidget(b);
-        connect(b, &QPushButton::clicked, dialog,
-                [this, list, action]
+        connect(
+            b, &QPushButton::clicked, dialog,
+            [this, list, action]
+            {
+                auto item = list->currentItem();
+                const QString name = item ? item->text() : QString();
+                if (action == "Import")
                 {
-                    auto item = list->currentItem();
-                    const QString name = item ? item->text() : QString();
-                    if (action == "Import")
-                    {
-                        QString path = QFileDialog::getOpenFileName(this, "Import profile", QString(),
-                                                                    "Profiles (*.json)");
-                        QFile file(path);
-                        if (!file.open(QIODevice::ReadOnly))
-                            return;
-                        auto doc = QJsonDocument::fromJson(file.readAll());
-                        auto map = doc.object().toVariantMap();
-                        const QString label = QFileInfo(path).completeBaseName();
-                        getSettings()->setValue("Redesign/profiles/" + label, map);
-                        list->addItem(label);
-                    }
-                    else if (name.isEmpty())
+                    QString path =
+                        QFileDialog::getOpenFileName(this, "Import profile", QString(), "Profiles (*.json)");
+                    QFile file(path);
+                    if (!file.open(QIODevice::ReadOnly))
                         return;
-                    else if (action == "Export")
+                    if (file.size() > 256 * 1024)
                     {
-                        QString path = QFileDialog::getSaveFileName(this, "Export profile", name + ".json",
-                                                                    "Profiles (*.json)");
-                        QFile file(path);
-                        if (file.open(QIODevice::WriteOnly))
-                            file.write(
-                                QJsonDocument(QJsonObject::fromVariantMap(
-                                                  getSettings()->value("Redesign/profiles/" + name).toMap()))
-                                    .toJson());
+                        QMessageBox::warning(this, "Import profile", "The profile exceeds the size limit.");
+                        return;
                     }
-                    else if (action == "Delete")
+                    QVariantMap map;
+                    if (!Reframe::parseProfile(file.read(256 * 1024 + 1), &map))
                     {
-                        getSettings()->remove("Redesign/profiles/" + name);
-                        delete item;
+                        QMessageBox::warning(this, "Import profile",
+                                             "The profile contains unsupported or unsafe settings.");
+                        return;
                     }
-                    else
-                    {
-                        QString label =
-                            QInputDialog::getText(this, "Rename profile", "Name", QLineEdit::Normal, name)
-                                .trimmed();
-                        if (label.isEmpty() || label == name)
-                            return;
-                        getSettings()->setValue("Redesign/profiles/" + label,
-                                                getSettings()->value("Redesign/profiles/" + name));
-                        getSettings()->remove("Redesign/profiles/" + name);
-                        item->setText(label);
-                    }
-                    QStringList names;
-                    for (int i = 0; i < list->count(); ++i)
-                        names << list->item(i)->text();
-                    getSettings()->setValue("Redesign/profileNames", names);
-                });
+                    const QString label = QFileInfo(path).completeBaseName();
+                    getSettings()->setValue("Redesign/profiles/" + label, map);
+                    list->addItem(label);
+                }
+                else if (name.isEmpty())
+                    return;
+                else if (action == "Export")
+                {
+                    QString path = QFileDialog::getSaveFileName(this, "Export profile", name + ".json",
+                                                                "Profiles (*.json)");
+                    QFile file(path);
+                    if (file.open(QIODevice::WriteOnly))
+                        file.write(
+                            QJsonDocument(QJsonObject::fromVariantMap(Reframe::portableProfile(
+                                              getSettings()->value("Redesign/profiles/" + name).toMap())))
+                                .toJson());
+                }
+                else if (action == "Delete")
+                {
+                    getSettings()->remove("Redesign/profiles/" + name);
+                    delete item;
+                }
+                else
+                {
+                    QString label =
+                        QInputDialog::getText(this, "Rename profile", "Name", QLineEdit::Normal, name)
+                            .trimmed();
+                    if (label.isEmpty() || label == name)
+                        return;
+                    getSettings()->setValue("Redesign/profiles/" + label,
+                                            getSettings()->value("Redesign/profiles/" + name));
+                    getSettings()->remove("Redesign/profiles/" + name);
+                    item->setText(label);
+                }
+                QStringList names;
+                for (int i = 0; i < list->count(); ++i)
+                    names << list->item(i)->text();
+                getSettings()->setValue("Redesign/profileNames", names);
+            });
     }
     dialog->body->addLayout(buttons);
     Reframe::reveal(dialog);

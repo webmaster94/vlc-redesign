@@ -14,6 +14,7 @@
 #include "redesign_settings.hpp"
 #include "redesign_controls.hpp"
 #include "redesign_seek.hpp"
+#include "redesign_image.hpp"
 #include <vlc_configuration.h>
 #include <vlc_aout.h>
 #include <QApplication>
@@ -711,6 +712,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
             });
     title->addStretch();
     auto titleLabel = new QLabel("Reframe");
+    titleLabel->setTextFormat(Qt::PlainText);
     titleLabel->setObjectName("windowTitle");
     title->addWidget(titleLabel);
     title->addStretch();
@@ -1329,9 +1331,13 @@ void RedesignShell::applyTheme()
     if (auto timeline = dynamic_cast<RedesignSeek *>(seek))
     {
         if (timeline->property("waveformState").toBool() !=
-            getSettings()->value("Redesign/waveform", false).toBool())
+                getSettings()->value("Redesign/waveform", false).toBool() ||
+            timeline->property("subtitleTimelineState").toBool() !=
+                getSettings()->value("Redesign/subtitleTimeline", false).toBool())
         {
             timeline->setProperty("waveformState", getSettings()->value("Redesign/waveform", false));
+            timeline->setProperty("subtitleTimelineState",
+                                  getSettings()->value("Redesign/subtitleTimeline", false));
             timeline->refreshMedia();
         }
         timeline->update();
@@ -1585,7 +1591,7 @@ void RedesignShell::refresh()
                 const QUrl art(metadata.value(path).value("art").toString());
                 if (art.isLocalFile())
                 {
-                    item->setIcon(QIcon(art.toLocalFile()));
+                    item->setIcon(Reframe::safeArtwork(art.toLocalFile()));
                     item->setData(Qt::UserRole + 1, true);
                 }
                 item->setData(Qt::UserRole, QString("group:" + name));
@@ -1616,7 +1622,7 @@ void RedesignShell::refresh()
             item->setData(Qt::UserRole, path);
             item->setIcon(data.value("thumbnail").toString().isEmpty()
                               ? lineIcon("playlist", QColor(accent))
-                              : QIcon(data.value("thumbnail").toString()));
+                              : Reframe::safeArtwork(data.value("thumbnail").toString()));
             continue;
         }
         QUrl url(path);
@@ -1642,7 +1648,7 @@ void RedesignShell::refresh()
         const QUrl art(info.value("art").toString());
         if (art.isLocalFile())
         {
-            item->setIcon(QIcon(art.toLocalFile()));
+            item->setIcon(Reframe::safeArtwork(art.toLocalFile()));
             item->setData(Qt::UserRole + 1, true);
         }
         if (!folder && f.exists())
@@ -1657,7 +1663,7 @@ void RedesignShell::refresh()
             thumbnails[local] = thumb;
             if (QFileInfo(thumb).size() > 0)
             {
-                item->setIcon(QIcon(thumb));
+                item->setIcon(Reframe::safeArtwork(thumb));
                 item->setData(Qt::UserRole + 1, true);
             }
             if (!QFileInfo::exists(thumb) &&
@@ -1743,6 +1749,8 @@ void RedesignShell::nextThumbnail()
         return;
     thumbnailProcess = new QProcess(this);
     QProcess *process = thumbnailProcess;
+    process->setStandardOutputFile(QProcess::nullDevice());
+    process->setStandardErrorFile(QProcess::nullDevice());
     QString path = thumbnailPath;
     QStringList args;
     args << "--intf=dummy"
@@ -1757,6 +1765,7 @@ void RedesignShell::nextThumbnail()
          << "--video-filter=scene"
          << "--scene-format=png"
          << "--scene-width=320"
+         << "--scene-height=180"
          << "--scene-ratio=1"
          << "--scene-replace" << ("--scene-path=" + cacheDirectory)
          << ("--scene-prefix=" + QFileInfo(output).completeBaseName()) << "--start-time=1"
@@ -1774,7 +1783,7 @@ void RedesignShell::nextThumbnail()
                 auto item = files->item(i);
                 if (item->data(Qt::UserRole).toString() == path)
                 {
-                    item->setIcon(QIcon(output));
+                    item->setIcon(Reframe::safeArtwork(output));
                     item->setData(Qt::UserRole + 1, true);
                 }
             }

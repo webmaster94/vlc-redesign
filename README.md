@@ -16,11 +16,15 @@ The installer follows VLC's NSIS wizard sequence: welcome, license, components, 
 
 ## OpenSubtitles
 
-The batch-track workflow supports native OpenSubtitles search, account login, download and per-file assignment. The app publisher must supply one registered application key. A build can receive it through the `OPENSUBTITLES_APP_KEY` GitHub Actions secret or packaging environment variable. The publisher setup panel supports a local development installation. Ordinary users share the app's key; they do not need to register their own application. Passwords and session tokens are kept in memory and excluded from profiles. Without publisher configuration, manual subtitle files and links remain usable. See [service setup and the verified API contract](doc/redesign/opensubtitles-api.md).
+Open **Add Subtitle Tracks**, choose **From OpenSubtitles**, and sign in with your own OpenSubtitles account. Search by title and language, select a result, then download and assign it to your media. Your password and session token are kept in memory and are not included in saved profiles.
+
+Online search is unavailable in builds without an OpenSubtitles connection. You can still use **Open website** to download subtitles, then add the file or a subtitle link. Developers can find connection setup in the [OpenSubtitles integration guide](doc/redesign/opensubtitles-api.md).
 
 Additional command-line options in General Settings apply on the next launch. Explicit command-line arguments take precedence. Start with `--ignore-config` to bypass saved additional options.
 
-See [implementation and coverage notes](doc/redesign/implementation.md), [the design inventory](doc/redesign/design-inventory.md) and [licensing findings](doc/redesign/licensing.md).
+Shared profiles contain appearance and media settings. Startup arguments, scripting, remote-control services, file paths and credentials are excluded.
+
+See the [security review](doc/redesign/security-audit.md) for fixed issues, adversarial tests and remaining limits.
 
 ## Licensing and credits
 

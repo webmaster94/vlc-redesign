@@ -14,7 +14,7 @@ Primary sources:
 
 ## Application key and user authentication
 
-The provider requires one application-level consumer key. Its documentation expressly prohibits making ordinary app users create their own API keys. Reframe's maintainer must register the application and supply that key through the build/developer setup. An end user's username/password is separate and must never be replaced by the developer's hardcoded account. Every API call carries `Api-Key` and a valid application/version `User-Agent`, for example `Reframe v0.1.1`. `X-User-Agent` is an alternative where setting User-Agent is impossible.
+The provider requires one application-level consumer key. Its documentation expressly prohibits making ordinary app users create their own API keys. Reframe's maintainer must register the application and supply that key through the build/developer setup. An end user's username/password is separate and must never be replaced by the developer's hardcoded account. Every API call carries `Api-Key` and a valid application/version `User-Agent`, for example `Reframe v0.4.0`. `X-User-Agent` is an alternative where setting User-Agent is impossible.
 
 The docs permit limited anonymous downloads with the application's key. Authentication raises the quota to the user's account allowance. Do not hardcode a daily allowance in the UI; display returned quota fields. The getting-started page and download-operation security notation are inconsistent about anonymous access: the former allows anonymous quota, while the download operation warns to send both headers. For authenticated downloads, always send both `Api-Key` and `Authorization: Bearer <token>`.
 
@@ -43,7 +43,7 @@ Core query fields:
 - `id`, `imdb_id`, `tmdb_id`, `uploader_id`, `parent_feature_id`, `parent_imdb_id`, `parent_tmdb_id`, `season_number`, `episode_number`, `year`, `page`: integers.
 - `hearing_impaired`, `foreign_parts_only`, `trusted_sources`, `machine_translated`, `ai_translated`, `moviehash_match`, `order_by`, `order_direction`: string filters. Check the live spec's allowed filter values.
 
-Use a precise movie/episode ID when available. For a show, send the parent ID plus season/episode; a unique episode ID should stand alone. Hash plus a meaningful filename query is supported. Sort query parameters alphabetically, lowercase query values, remove `tt` and leading zeroes from IMDB IDs, and follow redirects. Obtain valid language codes from `GET /infos/languages`, whose response is `data: [{language_code,language_name}]`.
+Use a precise movie/episode ID when available. For a show, send the parent ID plus season/episode; a unique episode ID should stand alone. Hash plus a meaningful filename query is supported. Sort query parameters alphabetically, lowercase query values, remove `tt` and leading zeroes from IMDB IDs, and validate destinations. Reframe rejects redirects on credentialed API requests so credentials cannot be forwarded to another origin. Obtain valid language codes from `GET /infos/languages`, whose response is `data: [{language_code,language_name}]`.
 
 Search response contains numeric/integer `total_pages`, `total_count`, `per_page`, `page`, and `data` array. Each row has string `id`, `type`, and `attributes`. Useful attributes:
 
@@ -94,3 +94,7 @@ The OpenAPI `security` arrays list bearer and API-key alternatives, but prose ex
 ## Verification limit
 
 The official API and its policy are verified. The native integration cannot be tested against real search/download responses until the fork has its own consumer key. That does not justify borrowing another application's published key or developer account. Optional account login can be implemented without embedding user credentials; runtime tokens and passwords should not be emitted in logs.
+
+## Build configuration
+
+Supply the registered application key through the `OPENSUBTITLES_APP_KEY` packaging environment variable or GitHub Actions secret. The package writes `opensubtitles-app-key.txt` beside the player. Local developers may set `OpenSubtitles/applicationKey` in their own Reframe settings. There is no publisher setup panel in the user interface. Users sign in with their own account; that account does not replace the application key.
