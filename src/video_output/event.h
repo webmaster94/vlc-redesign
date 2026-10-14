@@ -39,10 +39,9 @@
 
 static inline void vout_SendEventClose(vout_thread_t *vout)
 {
-#warning FIXME: implement video close event
-    /* FIXME: this code is disabled as it breaks the non-playlist cases */
-    //playlist_Stop(pl_Get(vout));
-    (void) vout;
+    /* The owning interface decides whether to stop media or disable an audio
+     * visualization. Never synchronously destroy the output from its window thread. */
+    var_SetBool(vout, "reframe-close-request", true);
 }
 static inline void vout_SendEventKey(vout_thread_t *vout, int key)
 {

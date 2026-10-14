@@ -17,6 +17,7 @@
 #include "redesign_image.hpp"
 #include <vlc_configuration.h>
 #include <vlc_aout.h>
+#include <vlc_vout.h>
 #include <QApplication>
 #include <QBoxLayout>
 #include <QFormLayout>
@@ -295,6 +296,22 @@ QIcon lineIcon(const QString &name, const QColor &color = QColor("#b8b8b8"))
         p.drawRoundedRect(QRectF(3, 7, 18, 13), 3, 3);
         p.drawRect(7, 4, 10, 3);
         p.drawEllipse(8, 10, 8, 8);
+    }
+    else if (name == "info")
+    {
+        p.drawEllipse(QRectF(4, 4, 16, 16));
+        line(12, 11, 12, 17);
+        p.drawPoint(12, 7);
+    }
+    else if (name == "pin")
+    {
+        line(8, 4, 16, 4);
+        line(9, 4, 9, 11);
+        line(15, 4, 15, 11);
+        line(9, 11, 6, 15);
+        line(15, 11, 18, 15);
+        line(6, 15, 18, 15);
+        line(12, 15, 12, 22);
     }
     else if (name == "mini")
     {
@@ -706,7 +723,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(navToggle, &QToolButton::clicked, this,
             [this]
             {
-                leaveFullscreen();
+                sidebar->setProperty("chromeTarget", true);
                 sidebar->show();
                 setNavigationWidth(!compact);
             });
@@ -716,6 +733,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     titleLabel->setObjectName("windowTitle");
     title->addWidget(titleLabel);
     title->addStretch();
+    title->addWidget(chromePin(header, "pinHeader"));
     // operator<< returns a reference. Own the list before range iteration.
     const QStringList windowActions = QStringList() << "minimize"
                                                     << "maximize"
@@ -750,6 +768,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     sidebar = new QWidget(body);
     sidebar->setObjectName("navigation");
     sidebar->setFixedWidth(196);
+    sidebar->setProperty("chromeWidth", 196);
     auto navigation = new QVBoxLayout(sidebar);
     navigation->setContentsMargins(8, 10, 8, 10);
     navigation->setSpacing(8);
@@ -778,24 +797,12 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
         connect(b, &QToolButton::clicked, this, [this, names, i] { showLibrary(names[i]); });
     }
     auto add = button("add", "Add item");
+    add->setObjectName("pinItemButton");
     navigation->addWidget(add);
-    connect(add, &QToolButton::clicked, this,
-            [this, add]
-            {
-                QMenu m;
-                m.addAction("Open File(s)", THEDP, &DialogsProvider::openFileDialog);
-                m.addAction("Open Folder", this,
-                            [this]
-                            {
-                                auto path = QFileDialog::getExistingDirectory(this, "Open Folder");
-                                if (!path.isEmpty())
-                                    browse(path);
-                            });
-                m.addAction("Open Network Stream", this, [this] { openNetwork(); });
-                m.addAction("New Playlist", this, [this] { newPlaylist(); });
-                m.exec(add->mapToGlobal(QPoint(0, add->height())));
-            });
+    add->setToolTip("Pin a file, folder, stream or playlist");
+    connect(add, &QToolButton::clicked, this, [this] { pinDestination(); });
     navigation->addStretch();
+    navigation->addWidget(chromePin(sidebar, "pinSidebar"), 0, Qt::AlignRight);
     auto prefs = button("settings", "Settings");
     navigation->addWidget(prefs);
     connect(prefs, &QToolButton::clicked, this, [this] { openSettings(); });
@@ -847,6 +854,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
                 }
             });
     auto grid = button("grid");
+    grid->setObjectName("libraryViewButton");
     grid->setToolTip("Switch grid or list view");
     tools->addWidget(grid);
     auto sorting = button("sliders");
@@ -891,10 +899,9 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(grid, &QToolButton::clicked, this,
             [this, grid]
             {
-                bool isGrid = files->viewMode() == QListView::IconMode;
-                files->setViewMode(isGrid ? QListView::ListMode : QListView::IconMode);
-                files->setGridSize(isGrid ? QSize(320, 56) : QSize(320, 232));
-                grid->setIcon(lineIcon(isGrid ? "list" : "grid"));
+                applyLibraryView(!getSettings()->value("Redesign/libraryList", false).toBool());
+                grid->setProperty("glyph", files->viewMode() == QListView::ListMode ? "grid" : "list");
+                grid->setIcon(lineIcon(grid->property("glyph").toString()));
             });
     search = new QLineEdit;
     search->setPlaceholderText("Search");
@@ -1086,6 +1093,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(sub, &QToolButton::clicked, this, [this] { openTracks(7); });
     connect(settings, &QToolButton::clicked, this, [this] { openMediaSettings(4); });
     connect(playlist, &QToolButton::clicked, this, [this] { showQueue(); });
+    bar->addWidget(chromePin(transport, "pinControls"));
     auto grip = new QSizeGrip(transport);
     grip->setObjectName("resizeGrip");
     bar->addWidget(grip);
@@ -1112,18 +1120,11 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(THEMIM->getIM(), &InputManager::nameChanged, this,
             [titleLabel](const QString &name) { titleLabel->setText(name.isEmpty() ? "Reframe" : name); });
     for (auto b : transport->findChildren<QToolButton *>())
-        controlButtons[b->property("glyph").toString()] = b;
+        if (!b->property("chromePin").toBool())
+            controlButtons[b->property("glyph").toString()] = b;
     chromeTimer = new QTimer(this);
     chromeTimer->setSingleShot(true);
-    connect(chromeTimer, &QTimer::timeout, this,
-            [this]
-            {
-                if (chromeCanHide())
-                {
-                    Reframe::animateHeight(header, false, 300);
-                    Reframe::animateHeight(transport, false, 300);
-                }
-            });
+    connect(chromeTimer, &QTimer::timeout, this, [this] { hideChrome(); });
     videoClickTimer = new QTimer(this);
     videoClickTimer->setSingleShot(true);
     videoClickTimer->setInterval(QApplication::doubleClickInterval());
@@ -1149,51 +1150,50 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(queueShortcut, &QShortcut::activated, this, [this] { toggleQueue(); });
     auto metadataTimer = new QTimer(this);
     metadataTimer->setInterval(350);
-    connect(metadataTimer, &QTimer::timeout, this, [this] { pollMetadata(); });
+    connect(metadataTimer, &QTimer::timeout, this,
+            [this]
+            {
+                pollMetadata();
+                bool closeVisualization = false, closeVideo = false;
+                for (auto output : THEMIM->getVouts())
+                {
+                    if (var_GetBool(output, "reframe-close-request"))
+                    {
+                        var_SetBool(output, "reframe-close-request", false);
+                        if (var_Type(output, "reframe-visualization") &&
+                            var_GetBool(output, "reframe-visualization"))
+                            closeVisualization = true;
+                        else
+                            closeVideo = true;
+                    }
+                    vlc_object_release(output);
+                }
+                if (closeVisualization)
+                {
+                    auto output = THEMIM->getAout();
+                    if (output)
+                    {
+                        var_SetString(output, "visual", "");
+                        vlc_object_release(output);
+                    }
+                }
+                if (closeVideo)
+                    THEMIM->stop();
+            });
     metadataTimer->start();
     startAudioFocus();
     auto edgeTimer = new QTimer(this);
     edgeTimer->setInterval(80);
-    connect(edgeTimer, &QTimer::timeout, this,
-            [this]
-            {
-                if (!window->isActiveWindow())
-                    return;
-                const auto point = window->mapFromGlobal(QCursor::pos());
-                if (!chromeCanHide())
-                    return;
-                if (!minimal && !window->isFullScreen())
-                {
-                    if (getSettings()->value("Redesign/autoHideControls").toString() == "Always" &&
-                        isPlayerVisible() && THEMIM->getIM()->hasInput())
-                    {
-                        const QPoint previous = property("lastControlPointer").toPoint();
-                        setProperty("lastControlPointer", point);
-                        if (point != previous && rect().contains(point))
-                            showChrome();
-                        else if (!chromeTimer->isActive() && header->isVisible())
-                            chromeTimer->start(qMax(500, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
-                    }
-                    return;
-                }
-                if (window->isFullScreen() && !config_GetInt(p_intf, "qt-fs-controller"))
-                    return;
-                if (point.x() < 0 || point.x() > window->width())
-                    return;
-                if (point.y() >= 0 && point.y() < 54)
-                {
-                    if (!header->isVisible())
-                        Reframe::animateHeight(header, true, 300);
-                    chromeTimer->start(qMax(500, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
-                }
-                else if (point.y() < window->height() && point.y() > window->height() - 80)
-                {
-                    if (!transport->isVisible())
-                        Reframe::animateHeight(transport, true, 300);
-                    chromeTimer->start(qMax(500, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
-                }
-            });
+    connect(edgeTimer, &QTimer::timeout, this, [this] { updateChromePointer(); });
     edgeTimer->start();
+    auto prompt = window->resumePrompt();
+    if (prompt && player->layout())
+    {
+        player->layout()->removeWidget(prompt);
+        prompt->setParent(player);
+        prompt->setAttribute(Qt::WA_NativeWindow);
+        prompt->hide();
+    }
     layoutControls();
     applyTheme();
     showLibrary("Home");
@@ -1205,6 +1205,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
 
 RedesignShell::~RedesignShell()
 {
+    qApp->removeEventFilter(this);
     var_DelCallback(THEPL, "fullscreen", fullscreenChanged, this);
     libvlc_MetadataCancel(p_intf->obj.libvlc, this);
     for (auto item : metadataRequests)
@@ -1295,6 +1296,12 @@ void RedesignShell::applyTheme()
            "QComboBox::down-arrow {image:url(:/reframe/chevron.svg);width:12px;height:12px;} "
            "QLabel#sectionHeading,QLabel#dialogHeading {color:" +
            (light ? QString("#303030") : QString("#c6c6c6")) + ";}";
+    css += QString("QToolTip {background:%1;color:%2;border:1px solid %3;padding:10px;} ")
+               .arg(panel, text, line);
+    css += QString("QWidget#resumePrompt {background:%1;border:1px solid %2;border-radius:16px;} "
+                   "QPushButton#continueWatchingButton "
+                   "{background:%3;color:#111111;font-weight:bold;border-radius:7px;} ")
+               .arg(panel, line, accent);
     css += QString("QWidget#trackPicker {background:%1;border-radius:10px;} "
                    "QListWidget#trackChoices,QListWidget#outputDeviceChoices {background:%2;border:0;} "
                    "QPushButton#trackPreferencesButton {background:%2;border:0;} "
@@ -1330,12 +1337,11 @@ void RedesignShell::applyTheme()
     qApp->setWindowIcon(window->windowIcon());
     if (auto timeline = dynamic_cast<RedesignSeek *>(seek))
     {
-        if (timeline->property("waveformState").toBool() !=
-                getSettings()->value("Redesign/waveform", false).toBool() ||
+        if (timeline->property("waveformState").toBool() != timeline->waveformEnabled() ||
             timeline->property("subtitleTimelineState").toBool() !=
                 getSettings()->value("Redesign/subtitleTimeline", false).toBool())
         {
-            timeline->setProperty("waveformState", getSettings()->value("Redesign/waveform", false));
+            timeline->setProperty("waveformState", timeline->waveformEnabled());
             timeline->setProperty("subtitleTimelineState",
                                   getSettings()->value("Redesign/subtitleTimeline", false));
             timeline->refreshMedia();
@@ -1349,6 +1355,7 @@ void RedesignShell::setNavigationWidth(bool collapse)
     if (compact == collapse && sidebar->width() == (collapse ? 48 : 196))
         return;
     compact = collapse;
+    sidebar->setProperty("chromeWidth", collapse ? 48 : 196);
     if (navigationAnimation)
     {
         navigationAnimation->stop();
@@ -1770,7 +1777,8 @@ void RedesignShell::nextThumbnail()
          << "--scene-replace" << ("--scene-path=" + cacheDirectory)
          << ("--scene-prefix=" + QFileInfo(output).completeBaseName()) << "--start-time=1"
          << "--stop-time=2"
-         << "--play-and-exit" << "--" << QUrl::fromLocalFile(path).toString();
+         << "--play-and-exit"
+         << "--" << QUrl::fromLocalFile(path).toString();
     auto done = [this, process, path, output]
     {
         if (thumbnailProcess != process)

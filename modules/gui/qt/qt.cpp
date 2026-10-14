@@ -668,9 +668,17 @@ static void *ThreadPlatform( void *obj, char *platform_name )
 
         var_Create( THEPL, "qt4-iface", VLC_VAR_ADDRESS );
         var_SetAddress( THEPL, "qt4-iface", p_intf );
+        /* Visualization resources can inherit directly from LibVLC rather
+         * than the playlist. Give them the same guarded Qt window provider. */
+        var_Create( p_intf->obj.libvlc, "qt4-iface", VLC_VAR_ADDRESS );
+        var_SetAddress( p_intf->obj.libvlc, "qt4-iface", p_intf );
+        var_Create( p_intf->obj.libvlc, "window", VLC_VAR_STRING );
         var_Create( THEPL, "window", VLC_VAR_STRING );
         if( p_sys->voutWindowType != VOUT_WINDOW_TYPE_INVALID )
+        {
             var_SetString( THEPL, "window", "qt,any" );
+            var_SetString( p_intf->obj.libvlc, "window", "qt,any" );
+        }
     }
 
     /* Explain how to show a dialog :D */
@@ -709,6 +717,8 @@ static void *ThreadPlatform( void *obj, char *platform_name )
     {
         var_Destroy( THEPL, "window" );
         var_Destroy( THEPL, "qt4-iface" );
+        var_Destroy( p_intf->obj.libvlc, "window" );
+        var_Destroy( p_intf->obj.libvlc, "qt4-iface" );
 
         QMutexLocker locker (&lock);
         active = false;

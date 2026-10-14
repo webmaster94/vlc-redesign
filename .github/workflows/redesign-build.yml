@@ -53,7 +53,7 @@ jobs:
           make -j4 fetch PKGS_FOUND= 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
           cd "$GITHUB_WORKSPACE"
           mkdir -p dist
-          tar -cJf dist/Reframe-3.0.24-r4-dependency-source.tar.xz -C contrib tarballs
+          tar -cJf dist/Reframe-3.0.24-r5-dependency-source.tar.xz -C contrib tarballs
           python3 extras/package/redesign/collect-notices.py --archives contrib/tarballs --existing build-validation/contrib/x86_64-w64-mingw32/share/licenses --output build-validation/dependency-licenses
       - name: Build the NSIS installer
         env:
@@ -64,7 +64,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/build-validation"
           python3 ../extras/package/redesign/package.py --payload win64/vlc-3.0.24 --licenses dependency-licenses --output "$GITHUB_WORKSPACE/dist"
           cd "$GITHUB_WORKSPACE"
-          git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r4-source.tar.xz
+          git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r5-source.tar.xz
           cp doc/redesign/credits.txt dist/CREDITS.txt
           (cd dist && sha256sum *source.tar.xz) >> dist/SHA256SUMS
       - name: Keep installer and portable player
@@ -115,13 +115,13 @@ jobs:
         with:
           name: reframe-windows-x64
           path: artifacts
-      - name: Check rendering playback and installer isolation
-        shell: pwsh
-        run: ./extras/package/redesign/smoke.ps1 -Artifacts ./artifacts
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: reframe-security-probes
           path: security-probes
+      - name: Check rendering playback and installer isolation
+        shell: pwsh
+        run: ./extras/package/redesign/smoke.ps1 -Artifacts ./artifacts -PrintReceiver ./security-probes/printscreen-receiver.exe
       - name: Run adversarial security regression probes
         shell: pwsh
         run: |
@@ -143,6 +143,8 @@ jobs:
             artifacts/controls.txt.page*.png
             artifacts/controls.txt.flow*.png
             artifacts/controls.txt.regression*.png
+            artifacts/controls.txt.feedback*.png
+            artifacts/printscreen.txt
             artifacts/controls.txt
             artifacts/first-run-*.txt
             artifacts/first-run-*.png

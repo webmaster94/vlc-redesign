@@ -341,10 +341,14 @@ void RedesignShell::openMediaSettings(int page)
         {
             if (preferences->currentPage() == page && sidePanel->isVisible())
             {
+                sidePanel->setProperty("chromeWasOpen", false);
                 sidePanel->hide();
                 return;
             }
             preferences->selectPage(page);
+            sidePanel->setProperty("chromeWasOpen", true);
+            sidePanel->setProperty("chromeTarget", true);
+            sidePanel->setFixedWidth(400);
             sidePanel->show();
             return;
         }
@@ -357,6 +361,8 @@ void RedesignShell::openMediaSettings(int page)
     prefs->setWindowFlags(Qt::Widget);
     prefs->setParent(this);
     prefs->setFixedWidth(400);
+    prefs->setProperty("chromeWidth", 400);
+    prefs->setProperty("chromeWasOpen", true);
     sidePanel = prefs;
     bodyLayout->addWidget(sidePanel);
     connect(prefs, &QObject::destroyed, this,
@@ -364,6 +370,19 @@ void RedesignShell::openMediaSettings(int page)
             {
                 if (sidePanel == prefs)
                     sidePanel = nullptr;
+            });
+    auto tools = new QHBoxLayout;
+    tools->addStretch();
+    tools->addWidget(chromePin(prefs, "pinPanel"));
+    auto close = button("close");
+    close->setToolTip("Close panel");
+    tools->addWidget(close);
+    prefs->body->insertLayout(0, tools);
+    connect(close, &QToolButton::clicked, prefs,
+            [prefs]
+            {
+                prefs->setProperty("chromeWasOpen", false);
+                prefs->hide();
             });
     prefs->show();
     Reframe::animateWidth(prefs, 400, 104);
@@ -380,6 +399,8 @@ void RedesignShell::openTracks(int selected)
     auto panel = new QWidget(this);
     panel->setObjectName("trackPicker");
     panel->setFixedWidth(360);
+    panel->setProperty("chromeWidth", 360);
+    panel->setProperty("chromeWasOpen", true);
     sidePanel = panel;
     auto layout = new QVBoxLayout(panel);
     layout->setContentsMargins(16, 8, 16, 20);
@@ -408,8 +429,14 @@ void RedesignShell::openTracks(int selected)
     top->addWidget(tabs, 1);
     auto close = button("close");
     close->setToolTip("Close track picker");
+    top->addWidget(chromePin(panel, "pinPanel"));
     top->addWidget(close);
-    connect(close, &QToolButton::clicked, panel, &QWidget::hide);
+    connect(close, &QToolButton::clicked, panel,
+            [panel]
+            {
+                panel->setProperty("chromeWasOpen", false);
+                panel->hide();
+            });
     layout->addLayout(top);
     layout->addWidget(stack, 1);
     for (int page = 5; page <= 7; ++page)
@@ -745,6 +772,8 @@ void RedesignShell::showQueue(int selected)
     sidePanel = new QWidget(this);
     sidePanel->setObjectName("queuePanel");
     sidePanel->setFixedWidth(360);
+    sidePanel->setProperty("chromeWidth", 360);
+    sidePanel->setProperty("chromeWasOpen", true);
     auto layout = new QVBoxLayout(sidePanel);
     layout->setContentsMargins(12, 8, 12, 12);
     layout->setSpacing(16);
@@ -763,9 +792,15 @@ void RedesignShell::showQueue(int selected)
     tabs->setObjectName("queueSelectors");
     auto top = new QHBoxLayout;
     top->addWidget(tabs, 1);
+    top->addWidget(chromePin(sidePanel, "pinPanel"));
     top->addWidget(close);
     layout->addLayout(top);
-    connect(close, &QToolButton::clicked, this, [this] { sidePanel->hide(); });
+    connect(close, &QToolButton::clicked, this,
+            [this]
+            {
+                sidePanel->setProperty("chromeWasOpen", false);
+                sidePanel->hide();
+            });
     auto stack = new QStackedWidget;
     stack->setObjectName("queueTabs");
     layout->addWidget(stack, 1);
@@ -1648,6 +1683,17 @@ void RedesignShell::toggleMiniPlayer()
     layout->addWidget(player, 1);
     auto actions = new QHBoxLayout;
     auto pause = button("play"), restore = button("maximize"), queue = button("playlist");
+    pause->setObjectName("miniPlayPause");
+    auto playbackState = [pause](int state)
+    {
+        const QString glyph = state == PLAYING_S ? "pause" : "play";
+        pause->setProperty("glyph", glyph);
+        pause->setIcon(Reframe::icon(glyph, pause->palette().text().color()));
+        pause->setAccessibleName(state == PLAYING_S ? "Pause" : "Play");
+        pause->setToolTip(state == PLAYING_S ? "Pause" : "Play");
+    };
+    playbackState(THEMIM->getIM()->playingStatus());
+    connect(THEMIM->getIM(), &InputManager::playingStatusChanged, miniPlayer, playbackState);
     actions->addWidget(pause);
     actions->addStretch();
     actions->addWidget(queue);
@@ -2119,13 +2165,7 @@ void RedesignShell::mainMenu(const QPoint &position)
 {
     QMenu menu;
     menu.addAction("Open File(s)\tCtrl+O", THEDP, &DialogsProvider::openFileDialog);
-    menu.addAction("Open Folder\tCtrl+F", this,
-                   [this]
-                   {
-                       auto path = QFileDialog::getExistingDirectory(this, "Open Folder");
-                       if (!path.isEmpty())
-                           browse(path);
-                   });
+    menu.addAction("Open Folder\tCtrl+F", this, [this] { openSource(1); });
     menu.addAction("Open Network Stream\tCtrl+N", this, [this] { openNetwork(); });
     menu.addAction("Open Disc\tCtrl+D", THEDP, &DialogsProvider::openDiscDialog);
     menu.addAction("Open Capture Device\tCtrl+C", THEDP, &DialogsProvider::openCaptureDialog);
@@ -2219,6 +2259,19 @@ void RedesignShell::playerMenu(const QPoint &position)
 }
 bool RedesignShell::eventFilter(QObject *target, QEvent *event)
 {
+    if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease ||
+        event->type() == QEvent::ShortcutOverride)
+    {
+        auto key = static_cast<QKeyEvent *>(event);
+        if (key->key() == Qt::Key_Print)
+        {
+            if (event->type() == QEvent::ShortcutOverride)
+                key->accept();
+            else
+                key->ignore();
+            return true;
+        }
+    }
     if (target == this && event->type() == RedesignFullscreenEvent::eventType())
     {
         if (static_cast<RedesignFullscreenEvent *>(event)->fullscreen != var_GetBool(THEPL, "fullscreen"))
@@ -2235,7 +2288,11 @@ bool RedesignShell::eventFilter(QObject *target, QEvent *event)
     }
     if (target == window && event->type() == QEvent::WindowStateChange)
     {
-        sidebar->setVisible(!window->isFullScreen() && !minimal);
+        if (window->isFullScreen())
+        {
+            sidebar->hide();
+            sidebar->setProperty("chromeTarget", false);
+        }
         showChrome();
         if (auto grip = transport->findChild<QWidget *>("resizeGrip"))
             grip->setVisible(!window->isFullScreen() && !window->isMaximized());
@@ -2287,28 +2344,12 @@ bool RedesignShell::eventFilter(QObject *target, QEvent *event)
         remainingTime = !remainingTime;
         return true;
     }
-    if (chromeCanHide() && event->type() == QEvent::MouseMove)
-    {
-        const auto point = window->mapFromGlobal(QCursor::pos());
-        if (point.y() < 80 || point.y() > window->height() - 100)
-        {
-            if (point.y() < 80 && !header->isVisible())
-                Reframe::animateHeight(header, true, 300);
-            if (point.y() > window->height() - 100 && !transport->isVisible())
-                Reframe::animateHeight(transport, true, 300);
-            chromeTimer->start(qMax(1000, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
-        }
-    }
+    if (event->type() == QEvent::MouseMove)
+        updateChromePointer();
+    if ((target == player && event->type() == QEvent::Resize) ||
+        (target == window->resumePrompt() && event->type() == QEvent::Show))
+        positionResumePrompt();
     return QWidget::eventFilter(target, event);
-}
-void RedesignShell::showChrome()
-{
-    if (!header->isVisible())
-        Reframe::animateHeight(header, true, 300);
-    if (!transport->isVisible())
-        Reframe::animateHeight(transport, true, 300);
-    if (chromeCanHide())
-        chromeTimer->start(qMax(1000, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
 }
 bool RedesignShell::chromeCanHide() const
 {
@@ -2323,8 +2364,8 @@ void RedesignShell::leaveFullscreen()
     if (window->isFullScreen() || window->isInterfaceFullScreen() || var_GetBool(THEPL, "fullscreen"))
     {
         window->exitFullscreen();
-        showChrome();
     }
+    showChrome();
 }
 void RedesignShell::toggleFullscreen()
 {
@@ -2378,7 +2419,7 @@ void RedesignShell::checkUpdates()
                     const auto tag = data.value("tag_name").toString();
                     if (QRegularExpression("^v[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}$").match(tag).hasMatch() &&
                         QVersionNumber::compare(QVersionNumber::fromString(tag.mid(1)),
-                                                QVersionNumber(0, 4, 0)) > 0 &&
+                                                QVersionNumber(0, 5, 0)) > 0 &&
                         tag != getSettings()->value("Redesign/lastRelease").toString())
                     {
                         getSettings()->setValue("Redesign/lastRelease", tag);
@@ -2940,14 +2981,7 @@ void RedesignShell::runInteractionSmoke(const QString &reportPath,
                     scroll->ensureWidgetVisible(settingsDialog->findChild<QWidget *>("equalizerPanel"), 20,
                                                 20);
             *next = nullptr;
-            report(
-                "PASS: playback pause/resume/seek, 13 settings pages, 22 panel/dialog flows, onboarding "
-                "layout "
-                "and selection, equalizer and subtitle timing; Ogg "
-                "library/context-selection/playlist/save/playback, "
-                "visible queue rows, volume/fullscreen control geometry, interface and video fullscreen "
-                "hide/reveal/Escape/navigation, bottom-right Now Playing, resize handles, anchored dropdown "
-                "and advanced fold transitions");
+            runFeedbackSmoke(reportPath, report);
             return;
         }
         ++*phase;

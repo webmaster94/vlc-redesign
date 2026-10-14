@@ -45,5 +45,10 @@ class RedesignSeek : public QSlider
     RedesignSeek(intf_thread_t *, QWidget *);
     ~RedesignSeek();
     void refreshMedia();
+    bool waveformEnabled() const;
+    bool hasWaveform() const
+    {
+        return !waveform.isEmpty();
+    }
 };
 #endif

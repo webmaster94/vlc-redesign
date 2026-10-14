@@ -43,7 +43,7 @@ class Toggle : public QAbstractButton
     explicit Toggle(QWidget *parent = nullptr);
     QSize sizeHint() const override
     {
-        return QSize(68, 32);
+        return QSize(64, 28);
     }
 };
 

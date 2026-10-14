@@ -17,6 +17,7 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     assert(!workerMediaAllowed(QString()));
+    assert(!workerMediaAllowed(QString(8193, 'a')));
     assert(!workerMediaAllowed("--reset-config"));
     assert(!workerMediaAllowed(":sout=invalid"));
     assert(!workerMediaAllowed(QString("file:///media") + QChar(0) + "suffix"));

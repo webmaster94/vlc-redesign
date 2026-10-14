@@ -1,11 +1,11 @@
 # Reframe integration checks in an isolated Windows CI environment.
 # Copyright 2026 webmaster94. GPL-2.0-or-later.
-param([Parameter(Mandatory=$true)][string]$Artifacts)
+param([Parameter(Mandatory=$true)][string]$Artifacts, [string]$PrintReceiver)
 $ErrorActionPreference = 'Stop'
 $Artifacts = (Resolve-Path -LiteralPath $Artifacts).Path
 $testRoot = Join-Path $env:RUNNER_TEMP 'reframe-integration'
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
-$portableArchive = Join-Path $Artifacts 'Reframe-3.0.24-r4-win64-portable.zip'
+$portableArchive = Join-Path $Artifacts 'Reframe-3.0.24-r5-win64-portable.zip'
 Expand-Archive -LiteralPath $portableArchive -DestinationPath (Join-Path $testRoot 'portable')
 $app = Join-Path $testRoot 'portable\Reframe\reframe.exe'
 # Exercise normal startup with a fresh portable profile, including the real consent dialog.
@@ -96,13 +96,30 @@ for ($frameIndex = 0; $frameIndex -lt 150; $frameIndex++) {
 $videoWriter.Dispose()
 
 $controlReport = Join-Path $testRoot 'controls.txt'
+$printProbe = $null
+if ($PrintReceiver) {
+    $PrintReceiver = (Resolve-Path -LiteralPath $PrintReceiver).Path
+    $printLog = Join-Path $testRoot 'printscreen.txt'
+    $printProbe = Start-Process -FilePath $PrintReceiver -WindowStyle Hidden -PassThru -RedirectStandardOutput $printLog -RedirectStandardError ($printLog + '.errors')
+    $readyUntil = [DateTime]::UtcNow.AddSeconds(5)
+    while ([DateTime]::UtcNow -lt $readyUntil -and (-not (Test-Path -LiteralPath $printLog) -or -not ([string](Get-Content -LiteralPath $printLog -Raw)).Contains('READY:'))) { Start-Sleep -Milliseconds 50 }
+    if (-not (Test-Path -LiteralPath $printLog) -or -not ([string](Get-Content -LiteralPath $printLog -Raw)).Contains('READY:')) { $printProbe.Kill(); throw 'External PrintScreen receiver did not register its hotkey' }
+    $env:REFRAME_PRINT_PROBE = '1'
+}
 $controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--ignore-config','--no-qt-privacy-ask','--aout=dummy',"--qt-redesign-smoke=$controlReport", "--qt-redesign-smoke-library=$musicRoot",('"' + $wave + '"')) -PassThru -WindowStyle Hidden
-if (-not $controls.WaitForExit(90000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
+if (-not $controls.WaitForExit(120000)) { $controls.Kill(); if ($printProbe -and -not $printProbe.HasExited) { $printProbe.Kill() }; throw 'Widget and playback integration checks timed out' }
+Remove-Item Env:REFRAME_PRINT_PROBE -ErrorAction SilentlyContinue
 if (-not (Test-Path -LiteralPath $controlReport)) { throw 'Widget and playback integration report was not written' }
 $controlResult = Get-Content -LiteralPath $controlReport -Raw
 Copy-Item -LiteralPath $controlReport -Destination $Artifacts
 Get-ChildItem -LiteralPath $testRoot -Filter 'controls.txt.*.png' | Copy-Item -Destination $Artifacts
-if (-not $controlResult.StartsWith('PASS:')) { throw $controlResult }
+if (-not $controlResult.StartsWith('PASS:')) { if ($printProbe -and -not $printProbe.HasExited) { $printProbe.Kill() }; throw $controlResult }
+if ($printProbe) {
+    if (-not $printProbe.WaitForExit(5000)) { $printProbe.Kill(); throw 'PrintScreen was not received from both fullscreen contexts' }
+    Copy-Item -LiteralPath $printLog -Destination $Artifacts
+    Get-Content -LiteralPath $printLog
+    if ($printProbe.ExitCode -ne 0) { throw 'External PrintScreen test failed' }
+}
 Write-Output $controlResult
 Copy-Item -LiteralPath ($controlReport + '.player.png') -Destination (Join-Path $Artifacts 'controls-player.png')
 Copy-Item -LiteralPath ($controlReport + '.settings.png') -Destination (Join-Path $Artifacts 'controls-settings.png')
@@ -120,7 +137,7 @@ New-Item -Path "$classes\.mp4" -Force | Out-Null
 Set-Item -Path "$classes\.mp4" -Value 'VLC.mp4'
 
 $destination = Join-Path $testRoot 'installed'
-$setup = Join-Path $Artifacts 'Reframe-3.0.24-r4-win64.exe'
+$setup = Join-Path $Artifacts 'Reframe-3.0.24-r5-win64.exe'
 foreach ($pass in 1..2) {
     $install = Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$destination") -Wait -PassThru -WindowStyle Hidden
     if ($install.ExitCode -ne 0) { throw "Installer failed on pass $pass" }

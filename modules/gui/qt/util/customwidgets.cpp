@@ -268,6 +268,7 @@ static int keycmp( const void *a, const void *b )
 int qtEventToVLCKey( const QKeyEvent *e )
 {
     int qtk = e->key();
+    if (qtk == Qt::Key_Print) return 0;
     uint32_t i_vlck = 0;
 
     if( qtk <= 0xff )

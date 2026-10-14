@@ -235,16 +235,23 @@ void Toggle::paintEvent(QPaintEvent *)
     const auto accent = palette().highlight().color();
     p.setOpacity(isEnabled() ? 1 : .4);
     p.setPen(Qt::NoPen);
-    p.setBrush(palette().button());
-    p.setPen(QPen(palette().mid().color(), 1));
-    p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 5, 5);
+    const bool dark = palette().window().color().lightness() < 128;
+    p.setBrush(dark ? QColor("#080808") : QColor("#dddddd"));
+    p.setPen(QPen(dark ? QColor("#303030") : QColor("#b8b8b8"), 1));
+    p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 4, 4);
     const qreal amount = isVisible() ? qBound(0.0, position, 1.0) : (isChecked() ? 1 : 0);
     p.setPen(Qt::NoPen);
-    p.setBrush(isChecked() ? accent : QColor("#666666"));
-    p.drawRoundedRect(QRectF(3 + amount * 29, 3, 27, 26), 3, 3);
-    p.setPen(isChecked() ? accent : palette().text().color());
-    p.setFont(QFont(font().family(), 8));
-    p.drawText(QRectF(isChecked() ? 3 : 33, 0, 28, 32), Qt::AlignCenter, isChecked() ? "ON" : "OFF");
+    QColor labelFill = isChecked() ? accent : palette().button().color();
+    labelFill.setAlpha(isChecked() ? 30 : 120);
+    p.setBrush(labelFill);
+    p.drawRoundedRect(QRectF(isChecked() ? 2 : 33, 2, 29, 24), 2, 2);
+    p.setBrush(isChecked() ? accent : dark ? QColor("#454545") : QColor("#aaaaaa"));
+    p.drawRoundedRect(QRectF(2 + amount * 31, 2, 29, 24), 2, 2);
+    p.setPen(isChecked() ? accent : QColor("#929292"));
+    QFont labelFont = font();
+    labelFont.setPixelSize(11);
+    p.setFont(labelFont);
+    p.drawText(QRectF(isChecked() ? 2 : 33, 0, 29, 28), Qt::AlignCenter, isChecked() ? "ON" : "OFF");
     if (hasFocus())
     {
         p.setPen(accent);

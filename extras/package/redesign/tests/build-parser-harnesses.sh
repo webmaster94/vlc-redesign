@@ -15,3 +15,4 @@ for name in native-seek-data profile-security; do
     -I"$prefix/include/QtGui" -I"$repo/modules/gui/qt" "$repo/extras/package/redesign/tests/$name.cpp" \
     "${extra[@]}" "$repo/extras/package/redesign/tests/qt56-crt-probe.cpp" -L"$prefix/lib" -Wl,--start-group "${libs[@]}" -Wl,--end-group -static -s -o "$output/$name.exe"
 done
+x86_64-w64-mingw32-gcc "$repo/extras/package/redesign/tests/printscreen-receiver.c" -static -s -luser32 -o "$output/printscreen-receiver.exe"

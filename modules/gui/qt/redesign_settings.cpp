@@ -10,6 +10,7 @@
 #include "actions_manager.hpp"
 #include "redesign.hpp"
 #include "redesign_profile.hpp"
+#include "redesign_seek_data.hpp"
 #include "util/customwidgets.hpp"
 #include "dialogs_provider.hpp"
 #include "recents.hpp"
@@ -48,6 +49,8 @@
 #include <QKeyEvent>
 #include <QStyledItemDelegate>
 #include <QSaveFile>
+#include <QToolTip>
+#include <QTextDocument>
 #include <QStandardPaths>
 #include <QPainter>
 #include <QProcess>
@@ -355,31 +358,15 @@ void RedesignPreferences::saveAppProfile(const QString &name)
         module_config_free(configs);
     }
     module_list_free(modules);
-    for (const auto &key : QStringList({"theme",
-                                        "accent",
-                                        "toolbar",
-                                        "toolbar2",
-                                        "leftControls",
-                                        "topControls",
-                                        "compactOnPlayback",
-                                        "VideosDirectory",
-                                        "MusicDirectory",
-                                        "autoHideControls",
-                                        "seekThumbnails",
-                                        "waveform",
-                                        "subtitleTimeline",
-                                        "pauseOtherAudio",
-                                        "singleClick",
-                                        "doubleClick",
-                                        "reverseScroll",
-                                        "notificationDuration",
-                                        "startupVolume",
-                                        "nightMode",
-                                        "rememberWindow",
-                                        "checkUpdates",
-                                        "extraArgs",
-                                        "useSkin",
-                                        "systemProxy"}))
+    for (const auto &key :
+         QStringList({"theme",          "accent",           "toolbar",           "toolbar2",
+                      "leftControls",   "topControls",      "compactOnPlayback", "VideosDirectory",
+                      "MusicDirectory", "autoHideControls", "seekThumbnails",    "waveform",
+                      "audioWaveform",  "libraryList",      "pinHeader",         "pinControls",
+                      "pinSidebar",     "pinPanel",         "subtitleTimeline",  "pauseOtherAudio",
+                      "singleClick",    "doubleClick",      "reverseScroll",     "notificationDuration",
+                      "startupVolume",  "nightMode",        "rememberWindow",    "checkUpdates",
+                      "extraArgs",      "useSkin",          "systemProxy"}))
         settings["ui:" + key] = read("ui:" + key);
     settings["ui:theme"] = getSettings()->value("Redesign/theme", "Dark");
     settings["ui:accent"] = getSettings()->value("Redesign/accent", "#d37918");
@@ -454,8 +441,22 @@ void RedesignPreferences::restore(const QVariantMap &values)
     old->deleteLater();
 }
 
+static bool audioContext(intf_thread_t *p_intf)
+{
+    auto item = THEMIM->currentInputItem();
+    char *uri = item ? input_item_GetURI(item) : nullptr;
+    const bool result = ReframeSeekData::audioMediaName(qfu(uri ? uri : "")) ||
+                        (THEMIM->getIM()->hasAudio() && !THEMIM->getIM()->hasVideo());
+    free(uri);
+    return result;
+}
 QVariant RedesignPreferences::read(const QString &key) const
 {
+    if (key == "ui:audioWaveform")
+        return getSettings()->value("Redesign/audioWaveform", true);
+    if (key == "ui:waveform")
+        return getSettings()->value(audioContext(p_intf) ? "Redesign/audioWaveform" : "Redesign/waveform",
+                                    audioContext(p_intf));
     if (!local && key == "sub-delay")
     {
         const auto precise = getSettings()->value("Redesign/preciseSubtitleDelay");
@@ -582,6 +583,12 @@ void RedesignPreferences::write(const QString &key, const QVariant &value)
     edited.insert(key);
     if (key.startsWith("ui:"))
     {
+        if (key == "ui:waveform" && audioContext(p_intf))
+        {
+            getSettings()->setValue("Redesign/audioWaveform", value.toBool());
+            themeChanged();
+            return;
+        }
         if (key == "ui:visualizer")
         {
             auto output = THEMIM->getAout();
@@ -864,6 +871,67 @@ void RedesignPreferences::heading(QVBoxLayout *layout, const QString &text)
 }
 void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget *control, const QString &key)
 {
+    QString explanation;
+    const auto cfg = config_FindConfig(qtu(key));
+    if (cfg)
+        explanation = qtr(cfg->psz_longtext && *cfg->psz_longtext ? cfg->psz_longtext : cfg->psz_text);
+    static const QHash<QString, QString> descriptions = {
+        {"ui:waveform", "Show the audio waveform on the seek bar. Audio tracks enable this by default. Local "
+                        "media up to 30 minutes is decoded in a bounded background job."},
+        {"ui:subtitleTimeline",
+         "Show subtitle cue timing on the seek bar. Drag the cue strip to adjust the subtitle delay."},
+        {"ui:visualizer", "Display a visualization driven by the playing audio. Choose Disabled to return to "
+                          "album art or the music icon."},
+        {"ui:seekThumbnails", "Show a preview frame and playback time when hovering over the seek bar."},
+        {"ui:autoHideControls", "Choose when title and playback controls hide. Move to the corresponding "
+                                "edge to reveal them, or pin a panel to keep it visible."},
+        {"ui:compactOnPlayback", "Show the compact library while media plays in the main window."},
+        {"ui:singleClick", "Choose the action performed by one click on the video surface."},
+        {"ui:doubleClick", "Choose the action performed by a double click on the video surface."},
+        {"ui:pauseOtherAudio", "Pause other controllable Windows audio sessions while Reframe plays. "
+                               "Sessions paused by Reframe are resumed afterward."},
+        {"ui:reverseScroll", "Reverse the direction of mouse-wheel playback controls."},
+        {"ui:rememberWindow", "Restore the saved window size and position on the next launch."},
+        {"ui:checkUpdates", "Check the fork's GitHub releases for a newer version. Downloads and "
+                            "installation require your action."},
+        {"ui:developerMode", "Enable detailed VLC diagnostic logging for troubleshooting."},
+        {"ui:extraArgs", "Additional VLC command-line options apply on the next launch. Explicit launch "
+                         "arguments take precedence. Use --ignore-config to bypass saved options."},
+        {"ui:nightMode", "Reduce the difference between quiet and loud passages using the compressor."},
+        {"ui:sleepMinutes",
+         "Stop playback when the selected number of minutes has elapsed. Off disables the timer."},
+        {"ui:startupVolume", "Volume to use when starting playback."},
+        {"ui:notificationDuration", "How long playback notifications remain visible."},
+        {"ui:VideosDirectory", "Folder displayed by default in the video library."},
+        {"ui:MusicDirectory", "Folder displayed by default in the music library."},
+        {"ui:useSkin", "Use VLC's skin interface on the next launch."},
+        {"ui:webRemote", "Enable VLC's HTTP remote-control interface. Configure its access and password in "
+                         "Network settings before using it."},
+        {"ui:lastFm",
+         "Submit played music to Last.fm using the account configured in the advanced settings."},
+        {"ui:systemProxy",
+         "Use the system connection settings instead of the manually configured HTTP proxy."},
+        {"ui:discoverCast", "Scan the local network for compatible playback renderers."}};
+    if (descriptions.contains(key))
+        explanation = descriptions.value(key);
+    if (key.startsWith("ui:crop-"))
+        explanation = "Crop this many pixels from the corresponding edge of the playing video.";
+    auto info = explanation.isEmpty() ? nullptr : new Reframe::ToolButton;
+    if (info)
+    {
+        info->setObjectName("settingInfo");
+        info->setFixedSize(20, 20);
+        info->setAutoRaise(true);
+        info->setIcon(Reframe::icon("info"));
+        info->setIconSize(QSize(16, 16));
+        info->setAccessibleName("Information about " + label);
+        info->setProperty("informationText", explanation);
+        info->setProperty("settingKey", key);
+        info->setToolTip(Qt::convertFromPlainText(explanation));
+        connect(info, &QToolButton::clicked, info,
+                [info]
+                { QToolTip::showText(info->mapToGlobal(QPoint(0, info->height())), info->toolTip(), info); });
+    }
     if (control->property("sliderOption").toBool())
     {
         auto top = static_cast<QHBoxLayout *>(control->layout()->itemAt(0)->layout());
@@ -871,6 +939,8 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
         text->setWordWrap(true);
         text->setObjectName("settingLabel");
         top->insertWidget(0, text, 1);
+        if (info)
+            top->insertWidget(1, info);
         control->setAccessibleName(label);
         layout->addWidget(control);
         return;
@@ -883,6 +953,8 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
     text->setWordWrap(true);
     text->setObjectName("settingLabel");
     form->addWidget(text, 1);
+    if (info)
+        form->addWidget(info);
     if (!key.isEmpty())
     {
         auto cfg = config_FindConfig(qtu(key));
@@ -898,8 +970,8 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
         field = new QWidget;
         auto contents = new QHBoxLayout(field);
         contents->setContentsMargins(0, 0, 0, 0);
-        contents->addWidget(control, 0, Qt::AlignLeft);
         contents->addStretch();
+        contents->addWidget(control, 0, Qt::AlignRight);
     }
     field->setMaximumWidth(local ? 200 : 320);
     if (local)

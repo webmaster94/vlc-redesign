@@ -14,6 +14,16 @@ Release checks exercise real media decoding, pause/resume/seek, equalizer persis
 
 The installer follows VLC's NSIS wizard sequence: welcome, license, components, destination, installation and finish. Reframe has its own installation directory, preferences, IPC identity, audio-session identity and uninstall entry. Optional Open With registration preserves existing default associations. Uninstallation removes packaged files individually and retains user files and preferences.
 
+## Playback and library
+
+Audio tracks show their album art, or a music icon when no cover is available. Their seek waveform is enabled by default; turn it off in the Playback panel. Waveforms are available for local media up to 30 minutes. The audio visualizer has separate Waveform, Scope, Spectrum, Spectrometer and VU meter choices.
+
+Use the library view button to switch between tiles and lists, including Home rows. The sidebar's **+** button pins files, folders, network streams and saved playlists. Right-click a pinned item to remove it.
+
+In fullscreen, move to an edge to reveal its controls. The panel under the pointer takes priority. Pin the title bar, playback controls or either sidebar to keep it visible. Leaving fullscreen restores the controls. PrintScreen is reserved for your screenshot utility.
+
+File, folder, disc, capture and network sources each open in their own window. File selection supports drag and drop, playback or queueing, with caching, playback range and optional subtitles in Advanced Options. Settings information icons show VLC's full explanations on hover.
+
 ## OpenSubtitles
 
 Open **Add Subtitle Tracks**, choose **From OpenSubtitles**, and sign in with your own OpenSubtitles account. Search by title and language, select a result, then download and assign it to your media. Your password and session token are kept in memory and are not included in saved profiles.

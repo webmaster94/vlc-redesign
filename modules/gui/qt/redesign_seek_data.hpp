@@ -3,6 +3,7 @@
 #define VLC_REDESIGN_SEEK_DATA_HPP
 #include <QFile>
 #include <QFileInfo>
+#include <QUrl>
 #include <QStringList>
 #include <QVector>
 #include <QtEndian>
@@ -23,8 +24,18 @@ struct Cue
 
 inline bool workerMediaAllowed(const QString &media)
 {
-    return !media.isEmpty() && !media.startsWith('-') && !media.startsWith(':') &&
+    return !media.isEmpty() && media.size() <= 8192 && !media.startsWith('-') && !media.startsWith(':') &&
            !media.contains(QChar(0));
+}
+inline bool audioMediaName(const QString &uri)
+{
+    if (uri.size() > 8192)
+        return false;
+    const QUrl url(uri);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.path();
+    return QStringList(
+               {"mp3", "flac", "wav", "ogg", "opus", "m4a", "aac", "wma", "aiff", "aif", "ape", "alac"})
+        .contains(QFileInfo(path).suffix().toLower());
 }
 
 inline bool cueTime(QString value, double &seconds)

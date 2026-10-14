@@ -55,6 +55,9 @@ libqt_plugin_la_SOURCES = \
 	gui/qt/redesign_profile.cpp gui/qt/redesign_profile.hpp \
 	gui/qt/redesign_image.cpp gui/qt/redesign_image.hpp \
 	gui/qt/redesign_flows.cpp \
+	gui/qt/redesign_open.cpp \
+	gui/qt/redesign_chrome.cpp \
+	gui/qt/redesign_feedback.cpp \
 	gui/qt/redesign_seek.cpp gui/qt/redesign_seek.hpp \
 	gui/qt/redesign_seek_data.hpp \
 	gui/qt/redesign_library.cpp \

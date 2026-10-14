@@ -83,6 +83,7 @@ public:
 
     /* Getters */
     QSystemTrayIcon *getSysTray() { return sysTray; }
+    QWidget *resumePrompt() const { return resumePanel; }
     QMenu *getSysTrayMenu() { return systrayMenu; }
     FullscreenControllerWidget* getFullscreenControllerWidget() { return fullscreenControls; }
     enum

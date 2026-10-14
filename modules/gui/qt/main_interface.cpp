@@ -32,7 +32,8 @@
 #include "qt.hpp"
 
 #include "main_interface.hpp"
-#include "redesign.hpp" // Reframe native interface, 2026-10-12
+#include "redesign.hpp"
+#include "redesign_controls.hpp" // Reframe native interface, 2026-10-12
 #include "input_manager.hpp"                    // Creation
 #include "actions_manager.hpp"                  // killInstance
 
@@ -408,25 +409,26 @@ void MainInterface::reloadPrefs()
 void MainInterface::createResumePanel( QWidget *w )
 {
     resumePanel = new QWidget( w );
+    resumePanel->setObjectName("resumePrompt");
+    resumePanel->setFixedHeight(52);
     resumePanel->hide();
     QHBoxLayout *resumePanelLayout = new QHBoxLayout( resumePanel );
-    resumePanelLayout->setSpacing( 0 ); resumePanelLayout->setContentsMargins( 0, 0, 0, 0 );
+    resumePanelLayout->setSpacing( 12 ); resumePanelLayout->setContentsMargins( 16, 6, 8, 6 );
 
-    QLabel *continuePixmapLabel = new QLabel();
-    continuePixmapLabel->setPixmap( ImageHelper::loadSvgToPixmap( ":/menu/help.svg" , fontMetrics().height(), fontMetrics().height()) );
-    continuePixmapLabel->setContentsMargins( 5, 0, 5, 0 );
-
-    QLabel *continueLabel = new QLabel( qtr( "Do you want to restart the playback where left off?") );
-
+    QLabel *continueLabel = new QLabel(qtr("You already watched till"));
+    continueLabel->setObjectName("resumeMessage");
+    continueLabel->setTextFormat(Qt::PlainText);
+    continueLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     QToolButton *cancel = new QToolButton( resumePanel );
     cancel->setAutoRaise( true );
-    cancel->setText( "X" );
+    cancel->setIcon(Reframe::icon("close"));
+    cancel->setAccessibleName("Dismiss continue watching");
+    cancel->setFixedSize(34, 34);
 
-    QPushButton *ok = new QPushButton( qtr( "&Continue" )  );
+    QPushButton *ok = new QPushButton(qtr("Continue Watching"));
+    ok->setObjectName("continueWatchingButton");
 
-    resumePanelLayout->addWidget( continuePixmapLabel );
-    resumePanelLayout->addWidget( continueLabel );
-    resumePanelLayout->addStretch( 1 );
+    resumePanelLayout->addWidget( continueLabel, 1 );
     resumePanelLayout->addWidget( ok );
     resumePanelLayout->addWidget( cancel );
 
@@ -449,12 +451,16 @@ void MainInterface::showResumePanel( int64_t _time ) {
         return;
 
     i_resumeTime = _time;
+    const qint64 seconds = _time / CLOCK_FREQ;
+    if (auto text = resumePanel->findChild<QLabel *>("resumeMessage"))
+        text->setText(qtr("You already watched till") + " " + QString("%1:%2:%3")
+            .arg(seconds / 3600, 2, 10, QChar('0')).arg(seconds / 60 % 60, 2, 10, QChar('0')).arg(seconds % 60, 2, 10, QChar('0')));
 
     if( setting == 2)
         resumePlayback();
     else
     {
-        if( !isFullScreen() && !isMaximized() && !b_isWindowTiled )
+        if( !redesignShell && !isFullScreen() && !isMaximized() && !b_isWindowTiled )
             resizeWindow( width(), height() + resumePanel->height() );
         resumePanel->setVisible(true);
         resumeTimer->start();
@@ -465,7 +471,7 @@ void MainInterface::hideResumePanel()
 {
     if( resumePanel->isVisible() )
     {
-        if( !isFullScreen() && !isMaximized() && !b_isWindowTiled )
+        if( !redesignShell && !isFullScreen() && !isMaximized() && !b_isWindowTiled )
             resizeWindow( width(), height() - resumePanel->height() );
         resumePanel->hide();
         resumeTimer->stop();

@@ -58,6 +58,8 @@ class RedesignShell : public QWidget
     void openMediaSettings(int page = 4);
     void openTracks(int page = 7);
     void openNetwork();
+    void openSource(int kind = 0);
+    void pinDestination();
     void customize();
     void onboarding();
     void startFirstRun();
@@ -150,12 +152,18 @@ class RedesignShell : public QWidget
     void updateQueue();
     void runFlowSmoke(const QString &, std::function<void(const QString &)>);
     void runInteractionSmoke(const QString &, std::function<void(const QString &)>);
+    void runFeedbackSmoke(const QString &, std::function<void(const QString &)>);
     void checkUpdates();
     void applyMediaBindings();
     void requestMetadata(const QString &);
     void pollMetadata();
     void renderHome();
     void refreshPins();
+    void applyLibraryView(bool listMode);
+    void updateChromePointer();
+    void hideChrome();
+    void positionResumePrompt();
+    QToolButton *chromePin(QWidget *, const QString &key);
     void mediaProperties(const QString &);
     void populateAuxiliaryControls();
     void openSubtitles(QWidget *, QTableWidget *);

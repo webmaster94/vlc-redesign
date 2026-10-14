@@ -448,6 +448,14 @@ void DialogsProvider::openFileGenericDialog( intf_dialog_args_t *p_arg )
 
 void DialogsProvider::openDialog( int i_tab )
 {
+    if (p_intf->p_sys->p_mi && p_intf->p_sys->p_mi->redesign())
+    {
+        auto shell = p_intf->p_sys->p_mi->redesign();
+        if (i_tab == OPEN_NETWORK_TAB) shell->openNetwork();
+        else shell->openSource(i_tab == OPEN_DISC_TAB ? 2 : i_tab == OPEN_CAPTURE_TAB ? 3 : 0);
+        return;
+    }
+
     OpenDialog::getInstance( p_intf->p_sys->p_mi , p_intf )->showTab( i_tab );
 }
 void DialogsProvider::openDialog()
@@ -456,10 +464,14 @@ void DialogsProvider::openDialog()
 }
 void DialogsProvider::openFileDialog()
 {
+    if (p_intf->p_sys->p_mi && p_intf->p_sys->p_mi->redesign())
+    { p_intf->p_sys->p_mi->redesign()->openSource(0); return; }
     openDialog( OPEN_FILE_TAB );
 }
 void DialogsProvider::openDiscDialog()
 {
+    if (p_intf->p_sys->p_mi && p_intf->p_sys->p_mi->redesign())
+    { p_intf->p_sys->p_mi->redesign()->openSource(2); return; }
     openDialog( OPEN_DISC_TAB );
 }
 void DialogsProvider::openNetDialog()
@@ -469,6 +481,8 @@ void DialogsProvider::openNetDialog()
 }
 void DialogsProvider::openCaptureDialog()
 {
+    if (p_intf->p_sys->p_mi && p_intf->p_sys->p_mi->redesign())
+    { p_intf->p_sys->p_mi->redesign()->openSource(3); return; }
     openDialog( OPEN_CAPTURE_TAB );
 }
 
@@ -544,6 +558,8 @@ void DialogsProvider::addFromSimple( bool pl, bool go)
 
 void DialogsProvider::simpleOpenDialog()
 {
+    if (p_intf->p_sys->p_mi && p_intf->p_sys->p_mi->redesign())
+    { p_intf->p_sys->p_mi->redesign()->openSource(0); return; }
     addFromSimple( true, true ); /* Playlist and Go */
 }
 
@@ -631,6 +647,8 @@ void DialogsProvider::PLOpenDir()
 
 void DialogsProvider::PLAppendDir()
 {
+    if (p_intf->p_sys->p_mi && p_intf->p_sys->p_mi->redesign())
+    { p_intf->p_sys->p_mi->redesign()->openSource(1); return; }
     openDirectory( p_intf, true, false );
 }
 

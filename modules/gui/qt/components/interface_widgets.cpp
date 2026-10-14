@@ -32,6 +32,7 @@
 
 #include "qt.hpp"
 #include "redesign_image.hpp"
+#include "redesign_controls.hpp"
 #include "components/interface_widgets.hpp"
 #include "dialogs_provider.hpp"
 #include "util/customwidgets.hpp"               // qtEventToVLCKey, QVLCStackedWidget
@@ -508,6 +509,15 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
     int i_maxwidth, i_maxheight;
     QPixmap pixmap = Reframe::safeArtwork(pixmapUrl).pixmap(1024, 1024);
     QPainter painter(this);
+    if (pixmap.isNull() && !THEMIM->getIM()->hasVideo())
+    {
+        setAccessibleDescription("Audio track with no album artwork");
+        const int size = qBound(64, qMin(width(), height()) / 3, 192);
+        const QColor accent(getSettings()->value("Redesign/accent", "#d37918").toString());
+        Reframe::icon("music", accent).paint(&painter,
+            QRect((width() - size) / 2, (height() - size) / 2, size, size));
+        return;
+    }
 
 #if HAS_QT56
     qreal dpr = devicePixelRatioF();

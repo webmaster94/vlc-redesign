@@ -163,6 +163,7 @@ static vout_thread_t *VoutCreate(vlc_object_t *object,
     vout_InitInterlacingSupport(vout, vout->p->displayed.is_interlaced);
 
     /* Window */
+    var_Create(vout, "reframe-close-request", VLC_VAR_BOOL);
     if (vout->p->splitter_name == NULL) {
         vout_window_cfg_t wcfg = {
             .is_standalone = !var_InheritBool(vout, "embedded-video"),

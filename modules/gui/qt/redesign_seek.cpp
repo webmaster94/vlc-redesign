@@ -43,7 +43,7 @@ RedesignSeek::RedesignSeek(intf_thread_t *intf, QWidget *parent)
     setMouseTracking(true);
     setMinimumHeight(30);
     char *dir = config_GetUserDir(VLC_CACHE_DIR);
-    cache = qfu(dir) + "/seek";
+    cache = QDir::fromNativeSeparators(qfu(dir)) + "/seek";
     free(dir);
     QDir().mkpath(cache);
     debounce.setSingleShot(true);
@@ -134,13 +134,19 @@ void RedesignSeek::refreshMedia()
     }
     if (getSettings()->value("Redesign/subtitleTimeline", false).toBool())
         loadCues();
-    if (getSettings()->value("Redesign/waveform", false).toBool())
+    if (waveformEnabled())
         decodeWaveform();
     update();
 }
 void RedesignSeek::loadCues()
 {
     cues = ReframeSeekData::loadCues(subtitle);
+}
+bool RedesignSeek::waveformEnabled() const
+{
+    const bool audio = ReframeSeekData::audioMediaName(media) ||
+                       (THEMIM->getIM()->hasInput() && !THEMIM->getIM()->hasVideo());
+    return getSettings()->value(audio ? "Redesign/audioWaveform" : "Redesign/waveform", audio).toBool();
 }
 void RedesignSeek::paintEvent(QPaintEvent *)
 {
@@ -157,7 +163,7 @@ void RedesignSeek::paintEvent(QPaintEvent *)
     fill.setAlpha(65);
     p.setBrush(fill);
     p.drawRoundedRect(QRectF(3, 4, (width() - 6) * position, h), 5, 5);
-    if (getSettings()->value("Redesign/waveform", false).toBool() && !waveform.isEmpty() && duration <= 1800)
+    if (waveformEnabled() && !waveform.isEmpty() && duration <= 1800)
     {
         p.setPen(QPen(palette().highlight().color(), 1));
         for (int x = 4; x < width() - 4; x += 2)
@@ -316,7 +322,8 @@ void RedesignSeek::thumbnail()
 }
 void RedesignSeek::decodeWaveform()
 {
-    if (!ReframeSeekData::workerMediaAllowed(media) || waveformProcess || duration > 1800)
+    if (!ReframeSeekData::workerMediaAllowed(media) || !QUrl(media).isLocalFile() || waveformProcess ||
+        duration > 1800)
         return;
     const QString output =
         cache + "/" +
@@ -330,7 +337,9 @@ void RedesignSeek::decodeWaveform()
     if (QFileInfo(output).size() > 0)
     {
         load();
-        return;
+        if (!waveform.isEmpty())
+            return;
+        QFile::remove(output);
     }
     trimCache();
     auto job = waveformProcess = new QProcess(this);
@@ -377,7 +386,8 @@ void RedesignSeek::decodeWaveform()
             << QString(
                    "--sout=#transcode{acodec=s16l,channels=1,samplerate=8000}:std{access=file,mux=raw,dst='" +
                    path + "'}")
-            << "--play-and-exit" << "--" << media);
+            << "--play-and-exit"
+            << "--" << media);
     // The stop time caps PCM at 28.8 MB. Also enforce a byte budget for malformed
     // streams and ensure seeking between items cannot accumulate decoder jobs.
     auto budget = new QTimer(job);

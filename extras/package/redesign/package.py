@@ -77,12 +77,12 @@ def main():
         path = output / (name.lower() + ".nsh")
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         manifest_files[name] = path
-    installer = output / "Reframe-3.0.24-r4-win64.exe"
+    installer = output / "Reframe-3.0.24-r5-win64.exe"
     cmd = ["makensis", "-V2", f"-DSTAGE={stage}", f"-DOUTPUT_FILE={installer}"]
     cmd.extend(f"-D{name}={path}" for name, path in manifest_files.items())
     cmd.append(str(repo / "extras/package/redesign/installer.nsi"))
     subprocess.run(cmd, check=True)
-    portable = output / "Reframe-3.0.24-r4-win64-portable.zip"
+    portable = output / "Reframe-3.0.24-r5-win64-portable.zip"
     with zipfile.ZipFile(portable, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in files:
             archive.write(path, "Reframe/" + path.relative_to(stage).as_posix())

@@ -35,6 +35,7 @@
 #include <QCryptographicHash>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QTextDocument>
 #include <QTimer>
 #include <algorithm>
 #include <random>
@@ -268,6 +269,33 @@ void RedesignShell::renderHome()
     files->hide();
     empty->hide();
     scroll->show();
+    applyLibraryView(getSettings()->value("Redesign/libraryList", false).toBool());
+}
+void RedesignShell::applyLibraryView(bool listMode)
+{
+    getSettings()->setValue("Redesign/libraryList", listMode);
+    auto lists = homePanel ? homePanel->findChildren<QListWidget *>("homeMedia") : QList<QListWidget *>();
+    lists << files;
+    for (auto list : lists)
+    {
+        const bool home = list != files;
+        list->setViewMode(listMode ? QListView::ListMode : QListView::IconMode);
+        list->setFlow(listMode ? QListView::TopToBottom : QListView::LeftToRight);
+        list->setWrapping(!listMode && !home);
+        list->setGridSize(listMode ? QSize() : home ? QSize(280, 220) : QSize(320, 232));
+        if (home)
+        {
+            list->setVerticalScrollBarPolicy(listMode ? Qt::ScrollBarAsNeeded : Qt::ScrollBarAlwaysOff);
+            list->setFixedHeight(listMode ? qMin(320, qMax(64, list->count() * 60 + 8)) : 230);
+        }
+        list->doItemsLayout();
+    }
+    if (auto mode = findChild<QToolButton *>("libraryViewButton"))
+    {
+        mode->setProperty("glyph", listMode ? "grid" : "list");
+        mode->setToolTip(listMode ? "Switch to tiles" : "Switch to list");
+        mode->setIcon(Reframe::icon(listMode ? "grid" : "list"));
+    }
 }
 void RedesignShell::refreshPins()
 {
@@ -280,7 +308,8 @@ void RedesignShell::refreshPins()
         auto rows = new QVBoxLayout(pins);
         rows->setContentsMargins(0, 0, 0, 0);
         rows->setSpacing(8);
-        layout->insertWidget(7, pins);
+        auto add = sidebar->findChild<QToolButton *>("pinItemButton");
+        layout->insertWidget(add ? layout->indexOf(add) + 1 : 7, pins);
     }
     auto rows = static_cast<QVBoxLayout *>(pins->layout());
     while (auto item = rows->takeAt(0))
@@ -301,7 +330,25 @@ void RedesignShell::refreshPins()
                         : path.startsWith("collection:") ? "playlist"
                                                          : "favorite",
                         name.isEmpty() ? path : name);
-        b->setToolTip(path);
+        b->setToolTip(Qt::convertFromPlainText(path));
+        b->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(b, &QWidget::customContextMenuRequested, this,
+                [this, b, path](const QPoint &point)
+                {
+                    QMenu menu;
+                    menu.addAction("Unpin", this,
+                                   [this, path]
+                                   {
+                                       auto favorites =
+                                           getSettings()->value("Redesign/favorites").toStringList();
+                                       favorites.removeAll(path);
+                                       getSettings()->setValue("Redesign/favorites", favorites);
+                                       refreshPins();
+                                       if (section == "Home")
+                                           renderHome();
+                                   });
+                    menu.exec(b->mapToGlobal(point));
+                });
         b->setToolButtonStyle(compact ? Qt::ToolButtonIconOnly : Qt::ToolButtonTextBesideIcon);
         rows->addWidget(b);
         connect(b, &QToolButton::clicked, this,

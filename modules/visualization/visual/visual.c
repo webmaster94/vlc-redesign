@@ -310,6 +310,8 @@ static int Open( vlc_object_t *p_this )
     }
 
     p_sys->fifo = block_FifoNew();
+    var_Create(p_sys->p_vout, "reframe-visualization", VLC_VAR_BOOL);
+    var_SetBool(p_sys->p_vout, "reframe-visualization", true);
     if( unlikely( p_sys->fifo == NULL ) )
     {
         aout_filter_RequestVout( p_filter, p_sys->p_vout, NULL );
