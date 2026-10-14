@@ -1959,7 +1959,7 @@ void RedesignShell::runSmoke(const QString &reportPath)
                                 if (auto toggle = dynamic_cast<Reframe::Toggle *>(control))
                                     if (toggle->isVisible())
                                     {
-                                        if (toggle->size() != QSize(68, 32))
+                                        if (toggle->size() != toggle->sizeHint())
                                         {
                                             *capture = nullptr;
                                             report(
