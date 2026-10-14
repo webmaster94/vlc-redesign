@@ -2220,6 +2220,8 @@ bool RedesignShell::eventFilter(QObject *target, QEvent *event)
 {
     if (target == this && event->type() == RedesignFullscreenEvent::eventType())
     {
+        if (static_cast<RedesignFullscreenEvent *>(event)->fullscreen != var_GetBool(THEPL, "fullscreen"))
+            return true;
         if (static_cast<RedesignFullscreenEvent *>(event)->fullscreen)
         {
             showPlayer();
