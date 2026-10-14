@@ -331,6 +331,7 @@ void RedesignShell::refreshPins()
                                                          : "favorite",
                         name.isEmpty() ? path : name);
         b->setToolTip(Qt::convertFromPlainText(path));
+        b->setProperty("pinnedPath", path);
         b->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(b, &QWidget::customContextMenuRequested, this,
                 [this, b, path](const QPoint &point)
@@ -356,6 +357,7 @@ void RedesignShell::refreshPins()
                 {
                     if (QFileInfo(local).isDir())
                     {
+                        leaveFullscreen();
                         section = "Videos";
                         browse(local);
                     }

@@ -135,6 +135,17 @@ void RedesignShell::runFeedbackSmoke(const QString &path, std::function<void(con
                 fail("plus did not pin the selected file");
                 return;
             }
+            pinDestination();
+            for (auto candidate : window->findChildren<QDialog *>("pinDialog"))
+                if (candidate->isVisible())
+                    *dialog = candidate;
+            (*dialog)->findChild<QComboBox *>()->setCurrentIndex(1);
+            if (!dropFile((*dialog)->findChild<QListWidget *>("pinFiles"), directory.absolutePath()))
+            {
+                fail("pin dialog did not accept a local folder");
+                return;
+            }
+            (*dialog)->findChild<QPushButton *>("pinSave")->click();
             showLibrary("Home");
             applyLibraryView(false);
         }
@@ -330,6 +341,20 @@ void RedesignShell::runFeedbackSmoke(const QString &path, std::function<void(con
             }
             if (sidePanel)
                 sidePanel->hide();
+            window->toggleInterfaceFullScreen();
+            bool openedFolder = false;
+            for (auto pin : sidebar->findChildren<QToolButton *>())
+                if (pin->property("pinnedPath") == directory.absolutePath())
+                {
+                    pin->click();
+                    openedFolder = !window->isFullScreen() && currentDirectory == directory.absolutePath();
+                    break;
+                }
+            if (!openedFolder)
+            {
+                fail("pinned folder did not open the library and leave fullscreen");
+                return;
+            }
             showLibrary("Home");
             const qint64 previous = var_GetInteger(p_intf->obj.libvlc, "key-pressed");
             QKeyEvent print(QEvent::KeyPress, Qt::Key_Print, Qt::NoModifier);

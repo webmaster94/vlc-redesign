@@ -362,6 +362,7 @@ static vlc_sem_t ready;
 static QMutex lock;
 static bool busy = false;
 static bool active = false;
+static uint64_t providerGeneration = 0;
 
 /*****************************************************************************
  * Module callbacks
@@ -516,6 +517,7 @@ static int Open( vlc_object_t *p_this, bool isDialogProvider )
      * an embedded video window. */
     vlc_sem_wait (&ready);
     vlc_sem_destroy (&ready);
+    ++providerGeneration;
     busy = active = true;
 
     return VLC_SUCCESS;
@@ -781,6 +783,7 @@ static int WindowControl( vout_window_t *, int i_query, va_list );
 
 typedef struct {
     MainInterface *mi;
+    uint64_t generation;
 #ifdef QT_HAS_X11
     Display *dpy;
 #endif
@@ -820,6 +823,7 @@ static int WindowOpen( vout_window_t *p_wnd, const vout_window_cfg_t *cfg )
     vout_window_qt_t *sys = new vout_window_qt_t;
 
     sys->mi = p_intf->p_sys->p_mi;
+    sys->generation = providerGeneration;
     p_wnd->sys = (vout_window_sys_t *)sys;
     msg_Dbg( p_wnd, "requesting video window..." );
 
@@ -889,7 +893,7 @@ static int WindowControl( vout_window_t *p_wnd, int i_query, va_list args )
     vout_window_qt_t *sys = (vout_window_qt_t *)p_wnd->sys;
     QMutexLocker locker (&lock);
 
-    if (unlikely(!active))
+    if (unlikely(!active || sys->generation != providerGeneration))
     {
         msg_Warn (p_wnd, "video already released before control");
         return VLC_EGENERIC;
@@ -931,7 +935,7 @@ static void WindowClose( vout_window_t *p_wnd )
      * That assumes the video output will behave sanely if it window is
      * destroyed asynchronously.
      * XCB and Xlib-XCB are fine with that. Plain Xlib wouldn't, */
-    if (likely(active))
+    if (likely(active && sys->generation == providerGeneration))
     {
         msg_Dbg(p_wnd, "releasing video...");
         sys->mi->releaseVideo();
