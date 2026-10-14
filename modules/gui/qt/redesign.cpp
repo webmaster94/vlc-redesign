@@ -63,6 +63,11 @@
 
 namespace
 {
+int fullscreenChanged(vlc_object_t *, const char *, vlc_value_t, vlc_value_t value, void *opaque)
+{
+    QApplication::postEvent(static_cast<RedesignShell *>(opaque), new RedesignFullscreenEvent(value.b_bool));
+    return VLC_SUCCESS;
+}
 QIcon lineIcon(const QString &name, const QColor &color = QColor("#b8b8b8"))
 {
     QPixmap pm(48, 48);
@@ -1190,12 +1195,14 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     applyTheme();
     showLibrary("Home");
     setProperty("windowReady", true);
+    var_AddCallback(THEPL, "fullscreen", fullscreenChanged, this);
     if (THEMIM->getIM()->hasInput())
         showPlayer();
 }
 
 RedesignShell::~RedesignShell()
 {
+    var_DelCallback(THEPL, "fullscreen", fullscreenChanged, this);
     libvlc_MetadataCancel(p_intf->obj.libvlc, this);
     for (auto item : metadataRequests)
         input_item_Release(item);

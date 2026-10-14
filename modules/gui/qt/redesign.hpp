@@ -11,6 +11,7 @@
 #include <QHash>
 #include <QQueue>
 #include <QVariant>
+#include <QEvent>
 #include <functional>
 
 class MainInterface;
@@ -29,6 +30,18 @@ class QBoxLayout;
 class QTimer;
 class RedesignPreferences;
 class QTableWidget;
+
+class RedesignFullscreenEvent : public QEvent
+{
+  public:
+    bool fullscreen;
+    static QEvent::Type eventType()
+    {
+        static const auto type = static_cast<QEvent::Type>(QEvent::registerEventType());
+        return type;
+    }
+    explicit RedesignFullscreenEvent(bool value) : QEvent(eventType()), fullscreen(value) {}
+};
 
 class RedesignShell : public QWidget
 {

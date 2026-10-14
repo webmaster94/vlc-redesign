@@ -776,6 +776,7 @@ void RedesignShell::showQueue(int selected)
         auto list = new QListWidget;
         list->setObjectName(i == 0 ? "queueItems" : i == 1 ? "chapterItems" : "bookmarkItems");
         list->setSpacing(6);
+        list->setSelectionMode(QAbstractItemView::ExtendedSelection);
         body->addWidget(list, 1);
         if (i == 0)
         {
@@ -2217,6 +2218,18 @@ void RedesignShell::playerMenu(const QPoint &position)
 }
 bool RedesignShell::eventFilter(QObject *target, QEvent *event)
 {
+    if (target == this && event->type() == RedesignFullscreenEvent::eventType())
+    {
+        if (static_cast<RedesignFullscreenEvent *>(event)->fullscreen)
+        {
+            showPlayer();
+            if (!window->isFullScreen())
+                window->toggleInterfaceFullScreen();
+        }
+        else
+            leaveFullscreen();
+        return true;
+    }
     if (target == window && event->type() == QEvent::WindowStateChange)
     {
         sidebar->setVisible(!window->isFullScreen() && !minimal);
@@ -2677,11 +2690,22 @@ void RedesignShell::runInteractionSmoke(const QString &reportPath,
                 return;
             }
             showQueue();
+            auto queue = sidePanel->findChild<QListWidget *>("queueItems");
+            queue->setProperty("smokeInsertedRows", 0);
+            connect(queue->model(), &QAbstractItemModel::rowsInserted, queue,
+                    [queue](const QModelIndex &, int first, int last)
+                    {
+                        queue->setProperty("smokeInsertedRows",
+                                           queue->property("smokeInsertedRows").toInt() + last - first + 1);
+                    });
+            Open::openMRL(p_intf, expected->first(), false);
         }
         else if (*phase == 5)
         {
+            updateQueue();
             auto list = sidePanel->findChild<QListWidget *>("queueItems");
-            if (!list || list->count() != *initialQueue + 3 ||
+            if (!list || list->count() != *initialQueue + 4 ||
+                list->property("smokeInsertedRows").toInt() < 1 ||
                 !list->visualItemRect(list->item(0)).isValid() ||
                 list->visualItemRect(list->item(0)).height() < 40)
             {
@@ -2689,6 +2713,11 @@ void RedesignShell::runInteractionSmoke(const QString &reportPath,
                 return;
             }
             sidePanel->grab().save(reportPath + ".regression-queue.png");
+            // Remove the extra copy through the same queue button the user uses.
+            list->setCurrentItem(list->item(list->count() - 1));
+            for (auto button : sidePanel->findChildren<QPushButton *>())
+                if (button->text() == "Remove")
+                    button->click();
             sidePanel->hide();
             auto fullscreen = controlButtons.value("fullscreen");
             if (!fullscreen || !transport->isAncestorOf(fullscreen) ||
