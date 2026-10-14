@@ -34,7 +34,8 @@ if ((Get-Item -LiteralPath $preview).Length -lt 1000) { throw 'Rendered preview 
 $wave = Join-Path $testRoot 'sample with spaces ñ測.wav'
 $samples = [byte[]]::new(240000)
 for ($sampleIndex = 0; $sampleIndex -lt 120000; $sampleIndex++) {
-    $sample = [int16]([Math]::Sin($sampleIndex * 2 * [Math]::PI * 440 / 8000) * 12000)
+    $envelope = 0.15 + 0.85 * (1 + [Math]::Sin($sampleIndex * 2 * [Math]::PI / 8000)) / 2
+    $sample = [int16]([Math]::Sin($sampleIndex * 2 * [Math]::PI * 440 / 8000) * 12000 * $envelope)
     [BitConverter]::GetBytes($sample).CopyTo($samples, $sampleIndex * 2)
 }
 $stream = [IO.File]::Create($wave)

@@ -1,6 +1,6 @@
 # Implementation notes
 
-Checked 13 October 2026.
+Checked 14 October 2026.
 
 ## Baseline
 
@@ -14,7 +14,7 @@ Checked 13 October 2026.
 
 The [Figma Community page](https://www.figma.com/community/file/1691465999134370980/vlc-redesign) identifies Juxtopposed as the creator and displays CC BY 4.0. The initial canvas did not load. The user then supplied 25 exported PNGs and a view-only copy link. Its prototype was readable, and local raw `.fig` data was decoded for measurements and transition settings. That resolved the access issue.
 
-The creator's [walkthrough](https://www.youtube.com/watch?v=ERFeOgqk324) and the decoded prototype were used to inventory panels, interactions and transitions. The former preference, effects, subtitle and toolbar dialogs are replaced by the redesign's own native panels and editors. Advanced module options are built into their settings category from VLC's configuration schema. File, disc, capture and transcoding forms retain their functionality where the supplied design specifies a menu entry without a replacement form.
+The creator's [walkthrough](https://www.youtube.com/watch?v=ERFeOgqk324) and the decoded prototype were used to inventory panels, interactions and transitions. The former preference, effects, subtitle and toolbar dialogs are replaced by the redesign's own native panels and editors. Advanced module options are built into their settings category from VLC's configuration schema. Files, folders, discs, capture devices and network streams have separate opening windows. Disc and capture backends retain their native controls inside these windows; transcoding retains its existing backend.
 
 ## Implemented coverage
 

@@ -938,9 +938,13 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
         auto text = new QLabel(label);
         text->setWordWrap(true);
         text->setObjectName("settingLabel");
-        top->insertWidget(0, text, 1);
+        auto labelRow = new QHBoxLayout;
+        labelRow->setSpacing(6);
+        labelRow->addWidget(text);
         if (info)
-            top->insertWidget(1, info);
+            labelRow->addWidget(info);
+        labelRow->addStretch();
+        top->insertLayout(0, labelRow, 1);
         control->setAccessibleName(label);
         layout->addWidget(control);
         return;
@@ -952,9 +956,13 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
     auto text = new QLabel(label);
     text->setWordWrap(true);
     text->setObjectName("settingLabel");
-    form->addWidget(text, 1);
+    auto labelRow = new QHBoxLayout;
+    labelRow->setSpacing(6);
+    labelRow->addWidget(text);
     if (info)
-        form->addWidget(info);
+        labelRow->addWidget(info);
+    labelRow->addStretch();
+    form->addLayout(labelRow, 1);
     if (!key.isEmpty())
     {
         auto cfg = config_FindConfig(qtu(key));

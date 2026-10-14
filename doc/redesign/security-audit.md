@@ -2,6 +2,8 @@
 
 Reviewed 13 October 2026 for the v0.4.0 Windows release, based on VLC 3.0.24.
 
+The 14 October v0.5.0 follow-up reviewed the new source dialogs, pin callbacks, fullscreen chrome and visualization ownership. An independent source review found two issues before release: a saved header pin compared an uninitialized sidebar pointer, and the expanded window-provider lookup dereferenced interface state before checking the shutdown guard. The sidebar is now initialized before pin setup. Window creation checks the active interface and its publication under the same lock used to unpublish it during teardown. These findings were established from source; neither has a demonstrated exploit.
+
 Three independent adversarial reviews covered the new native parsers, network integration, Windows launcher and installer. The review concentrated on changes introduced by Reframe: imported profiles, subtitle sidecars, generated waveforms and thumbnails, media artwork, service responses and subprocesses. Tests used synthetic local fixtures and dummy credentials. They did not attack third-party services or run a malicious script.
 
 ## Findings and fixes
