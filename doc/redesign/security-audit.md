@@ -16,6 +16,7 @@ Three independent adversarial reviews covered the new native parsers, network in
 | Media metadata could become Qt rich text | Titles containing HTML-like text could invoke rich-text behavior. | Dynamic title and filename labels explicitly use plain text. |
 | Installer could launch playback elevated | The default finish action inherited the administrator token from installation. | The finish page tells users to launch from the shortcut; it no longer runs the player from the elevated installer. |
 | Additional-options input was unbounded | Large files or excessive arguments could consume resources at startup. | A 16 KiB file cap, embedded-NUL rejection and a 512-argument cap. Arguments use Windows argument parsing, with no shell interpretation. |
+| Raw playlist strings could become worker options | Some playlist parsers preserve raw media strings. Preview workers appended them without terminating option parsing, allowing option-like strings to alter the child player's behavior. | Preview workers terminate option parsing with `--`; seek workers also reject option-like values and embedded NUL. Regression cases cover those values and ordinary media URIs. |
 
 The build image is pinned by registry digest. Dependency inputs and published artifacts have SHA-256 verification; GitHub Actions dependencies are pinned by commit.
 

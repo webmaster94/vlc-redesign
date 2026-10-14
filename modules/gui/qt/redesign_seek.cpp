@@ -245,7 +245,7 @@ void RedesignSeek::leaveEvent(QEvent *e)
 }
 void RedesignSeek::thumbnail()
 {
-    if (media.isEmpty() || !preview->isVisible())
+    if (!ReframeSeekData::workerMediaAllowed(media) || !preview->isVisible())
         return;
     const QString token = QString::fromLatin1(
         QCryptographicHash::hash((media + QString::number(hoverTime)).toUtf8(), QCryptographicHash::Sha256)
@@ -312,11 +312,11 @@ void RedesignSeek::thumbnail()
                              << QString("--scene-prefix=" + token)
                              << QString("--start-time=" + QString::number(time))
                              << QString("--stop-time=" + QString::number(time + 1.2)) << "--play-and-exit"
-                             << media);
+                             << "--" << media);
 }
 void RedesignSeek::decodeWaveform()
 {
-    if (media.isEmpty() || waveformProcess || duration > 1800)
+    if (!ReframeSeekData::workerMediaAllowed(media) || waveformProcess || duration > 1800)
         return;
     const QString output =
         cache + "/" +
@@ -377,7 +377,7 @@ void RedesignSeek::decodeWaveform()
             << QString(
                    "--sout=#transcode{acodec=s16l,channels=1,samplerate=8000}:std{access=file,mux=raw,dst='" +
                    path + "'}")
-            << "--play-and-exit" << media);
+            << "--play-and-exit" << "--" << media);
     // The stop time caps PCM at 28.8 MB. Also enforce a byte budget for malformed
     // streams and ensure seeking between items cannot accumulate decoder jobs.
     auto budget = new QTimer(job);

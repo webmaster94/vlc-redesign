@@ -1770,7 +1770,7 @@ void RedesignShell::nextThumbnail()
          << "--scene-replace" << ("--scene-path=" + cacheDirectory)
          << ("--scene-prefix=" + QFileInfo(output).completeBaseName()) << "--start-time=1"
          << "--stop-time=2"
-         << "--play-and-exit" << QUrl::fromLocalFile(path).toString();
+         << "--play-and-exit" << "--" << QUrl::fromLocalFile(path).toString();
     auto done = [this, process, path, output]
     {
         if (thumbnailProcess != process)

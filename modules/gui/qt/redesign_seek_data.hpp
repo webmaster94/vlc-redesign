@@ -21,6 +21,12 @@ struct Cue
     QString text;
 };
 
+inline bool workerMediaAllowed(const QString &media)
+{
+    return !media.isEmpty() && !media.startsWith('-') && !media.startsWith(':') &&
+           !media.contains(QChar(0));
+}
+
 inline bool cueTime(QString value, double &seconds)
 {
     const auto parts = value.trimmed().replace(',', '.').split(':');

@@ -16,6 +16,12 @@ using namespace ReframeSeekData;
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    assert(!workerMediaAllowed(QString()));
+    assert(!workerMediaAllowed("--reset-config"));
+    assert(!workerMediaAllowed(":sout=invalid"));
+    assert(!workerMediaAllowed(QString("file:///media") + QChar(0) + "suffix"));
+    assert(workerMediaAllowed("file:///C:/media/--title.ogg"));
+    assert(workerMediaAllowed("https://example.invalid/video.mp4"));
     QTemporaryDir directory;
     assert(directory.isValid());
     const QString path = directory.path() + "/hostile.srt";
