@@ -963,8 +963,10 @@ void MainInterface::setVideoFullScreen( bool fs )
     }
     else
     {
+        b_interfaceFullScreen = false;
         setMinimalView( b_minimalView );
-        setInterfaceFullScreen( b_interfaceFullScreen );
+        setInterfaceFullScreen( false );
+        emit fullscreenInterfaceToggled(false);
         if( lastWinScreen != NULL )
             windowHandle()->setScreen(lastWinScreen);
         if( lastWinPosition.isNull() == false )

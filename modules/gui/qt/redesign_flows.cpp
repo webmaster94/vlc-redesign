@@ -20,6 +20,7 @@
 #include <vlc_input.h>
 #include <vlc_input_item.h>
 #include <vlc_aout.h>
+#include <vlc_actions.h>
 #include "redesign_seek.hpp"
 #include <QApplication>
 #include <QBoxLayout>
@@ -402,7 +403,14 @@ void RedesignShell::openTracks(int selected)
         tabLayout->addWidget(tab, 1);
         connect(tab, &QPushButton::clicked, stack, [stack, page] { stack->setCurrentIndex(page - 5); });
     }
-    layout->addWidget(tabs);
+    auto top = new QHBoxLayout;
+    top->setSpacing(4);
+    top->addWidget(tabs, 1);
+    auto close = button("close");
+    close->setToolTip("Close track picker");
+    top->addWidget(close);
+    connect(close, &QToolButton::clicked, panel, &QWidget::hide);
+    layout->addLayout(top);
     layout->addWidget(stack, 1);
     for (int page = 5; page <= 7; ++page)
     {
@@ -576,9 +584,6 @@ void RedesignShell::openTracks(int selected)
         connect(preferences, &QPushButton::clicked, this, [this, page] { openMediaSettings(page); });
         stack->addWidget(widget);
     }
-    auto close = new QPushButton("Close");
-    layout->addWidget(close);
-    connect(close, &QPushButton::clicked, panel, &QWidget::hide);
     stack->setCurrentIndex(selected - 5);
     bodyLayout->addWidget(panel);
     panel->show();
@@ -2753,8 +2758,8 @@ void RedesignShell::runInteractionSmoke(const QString &reportPath,
                 fail("video fullscreen state and chrome hiding were inconsistent");
                 return;
             }
-            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
-            QApplication::sendEvent(window, &escape);
+            // Native video surfaces send Escape to VLC's action dispatcher.
+            var_SetInteger(p_intf->obj.libvlc, "key-pressed", KEY_ESC);
         }
         else if (*phase == 11)
         {
