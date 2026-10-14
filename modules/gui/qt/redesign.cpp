@@ -1216,8 +1216,8 @@ void RedesignShell::applyTheme()
                    "QWidget#onboardingThemes QPushButton {border:0;padding:10px 8px;} "
                    "QWidget#onboardingThemes QPushButton:checked {background:%3;color:%4;} "
                    "QLabel#shortcutKeycap {background:%2;border:1px solid %3;border-radius:6px;"
-                   "padding:0 8px;font-size:13px;color:%1;} "
-                   "QLabel#shortcutAction {font-size:15px;} ")
+                   "padding:0 8px;font-size:14px;color:%1;} "
+                   "QLabel#shortcutAction {font-size:16px;} ")
                .arg(light ? QString("#303030") : QString("#c6c6c6"), panel, line, accent);
     qApp->setStyleSheet(css);
     for (QToolButton *b : findChildren<QToolButton *>())

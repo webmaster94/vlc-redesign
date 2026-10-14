@@ -1491,7 +1491,8 @@ void RedesignShell::onboarding()
             auto cap = new QLabel(bindings[i]);
             cap->setObjectName("shortcutKeycap");
             cap->setAlignment(Qt::AlignCenter);
-            cap->setMinimumSize(38, 38);
+                cap->setMinimumWidth(38);
+                cap->setFixedHeight(42);
             layout->addWidget(cap);
         }
         column->addWidget(row);
