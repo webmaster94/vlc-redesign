@@ -199,6 +199,12 @@ Toggle::Toggle(QWidget *parent) : QAbstractButton(parent), motion(this), positio
             [this](bool checked)
             {
                 motion.stop();
+                if (!isVisible())
+                {
+                    position = checked ? 1.0 : 0.0;
+                    update();
+                    return;
+                }
                 motion.setStartValue(position);
                 motion.setEndValue(checked ? 1.0 : 0.0);
                 motion.start();

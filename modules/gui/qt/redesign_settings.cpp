@@ -876,10 +876,19 @@ void RedesignPreferences::row(QVBoxLayout *layout, const QString &label, QWidget
     control->setAccessibleName(label);
     if (control->objectName().isEmpty())
         control->setObjectName(key);
-    control->setMaximumWidth(local ? 200 : 320);
+    QWidget *field = control;
+    if (dynamic_cast<Reframe::Toggle *>(control))
+    {
+        field = new QWidget;
+        auto contents = new QHBoxLayout(field);
+        contents->setContentsMargins(0, 0, 0, 0);
+        contents->addWidget(control, 0, Qt::AlignLeft);
+        contents->addStretch();
+    }
+    field->setMaximumWidth(local ? 200 : 320);
     if (local)
-        control->setSizePolicy(QSizePolicy::Ignored, control->sizePolicy().verticalPolicy());
-    form->addWidget(control, 1);
+        field->setSizePolicy(QSizePolicy::Ignored, field->sizePolicy().verticalPolicy());
+    form->addWidget(field, 1);
     layout->addWidget(widget);
 }
 QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
@@ -1898,18 +1907,31 @@ QWidget *RedesignPreferences::buildPage(int page)
             auto b = new QPushButton;
             b->setCheckable(true);
             b->setChecked(getSettings()->value("Redesign/accent", "#d37918").toString() == color);
+            b->setProperty("accentColor", color);
+            b->setIcon(b->isChecked()
+                           ? Reframe::icon("check", QColor(color).lightness() > 150 ? QColor("#111111")
+                                                                                    : QColor("#ffffff"))
+                           : QIcon());
             b->setAccessibleName("Accent " + color);
             b->setFixedSize(30, 30);
             b->setStyleSheet(
                 "QPushButton {background:" + color +
-                ";border-radius:2px;padding:0;} QPushButton:checked {border:3px solid #371f06;}");
+                ";border-radius:2px;padding:0;} QPushButton:checked {border:2px solid #ececec;}");
             colorLayout->addWidget(b);
             connect(b, &QPushButton::clicked, this,
                     [this, color, colors]
                     {
                         getSettings()->setValue("Redesign/accent", color);
                         for (auto child : colors->findChildren<QPushButton *>())
+                        {
                             child->setChecked(child->accessibleName() == "Accent " + color);
+                            const QColor swatch(child->property("accentColor").toString());
+                            child->setIcon(child->isChecked()
+                                               ? Reframe::icon("check", swatch.lightness() > 150
+                                                                            ? QColor("#111111")
+                                                                            : QColor("#ffffff"))
+                                               : QIcon());
+                        }
                         themeChanged();
                     });
         }

@@ -1051,6 +1051,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     volume->setAccessibleName("Volume");
     volume->setObjectName("volumeSlider");
     volume->setValue(qMax(0, qRound(playlist_VolumeGet(THEPL) * 100)));
+    volume->setToolTip(QString::number(volume->value()) + "%");
     bar->addWidget(volume);
     connect(volume, &QSlider::valueChanged, this,
             [this](int v)
@@ -1932,6 +1933,30 @@ void RedesignShell::runSmoke(const QString &reportPath)
                         {
                             openSettings(*index);
                             settingsDialog->layout()->activate();
+                            for (auto control : settingsDialog->findChildren<QAbstractButton *>())
+                                if (auto toggle = dynamic_cast<Reframe::Toggle *>(control))
+                                    if (toggle->isVisible())
+                                    {
+                                        if (toggle->size() != QSize(68, 32))
+                                        {
+                                            *capture = nullptr;
+                                            report(
+                                                "FAIL: a settings switch was stretched by the form layout");
+                                            return;
+                                        }
+                                        if (toggle->isChecked() && toggle->isEnabled())
+                                        {
+                                            QImage pixels = toggle->grab().toImage().scaled(68, 32);
+                                            if (QColor::fromRgb(pixels.pixel(46, 16)) !=
+                                                toggle->palette().highlight().color())
+                                            {
+                                                *capture = nullptr;
+                                                report("FAIL: checked switch did not start with its knob on "
+                                                       "the right");
+                                                return;
+                                            }
+                                        }
+                                    }
                             auto scroll = settingsDialog->findChildren<QScrollArea *>();
                             for (auto area : scroll)
                                 if (area->isVisible() && area->horizontalScrollBar()->maximum() > 0)

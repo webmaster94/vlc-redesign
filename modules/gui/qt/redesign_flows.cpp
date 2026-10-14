@@ -2729,6 +2729,8 @@ void RedesignShell::runInteractionSmoke(const QString &reportPath,
                 return;
             }
             getSettings()->setValue("Redesign/autoHideControls", "In fullscreen only");
+            volume->setValue(100);
+            window->grab().save(reportPath + ".regression-volume.png");
             config_PutInt(p_intf, "mouse-hide-timeout", 500);
             fullscreen->click();
             QCursor::setPos(window->frameGeometry().center());
