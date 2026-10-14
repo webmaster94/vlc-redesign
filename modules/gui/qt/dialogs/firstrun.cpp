@@ -23,18 +23,16 @@
 
 #include "dialogs/firstrun.hpp"
 
-#include <QGridLayout>
-#include <QGroupBox>
 #include <QCheckBox>
 #include <QLabel>
 #include <QDialogButtonBox>
 
 FirstRun::FirstRun( QWidget *_p, intf_thread_t *_p_intf  )
-         : QVLCDialog( _p, _p_intf), p_intf( _p_intf )
+         : Reframe::Dialog( _p, qtr("Privacy and Network Access"), QSize(580, 440)), p_intf( _p_intf )
 {
-    msg_Dbg( p_intf, "Boring first Run Wizard" );
+    setObjectName("privacyDialog");
     buildPrivDialog();
-    setVisible( true );
+    Reframe::centerOnParent(this);
 }
 
 void FirstRun::save()
@@ -50,62 +48,40 @@ void FirstRun::save()
 #warning FIXME
     /* We have to save here because the user may not launch Prefs */
     config_SaveConfigFile( p_intf );
-    close();
+    accept();
 }
 
 void FirstRun::buildPrivDialog()
 {
-    setWindowTitle( qtr( "Privacy and Network Access Policy" ) );
-    setWindowRole( "vlc-privacy" );
+    setWindowRole( "reframe-privacy" );
     setWindowModality( Qt::ApplicationModal );
-    setWindowFlags( Qt::Dialog );
-    setAttribute( Qt::WA_DeleteOnClose );
-
-    QGridLayout *gLayout = new QGridLayout( this );
-
-    QGroupBox *blabla = new QGroupBox( qtr( "Privacy and Network Access Policy" ) );
-    QGridLayout *blablaLayout = new QGridLayout( blabla );
     QLabel *text = new QLabel( qtr(
-        "<p>In order to protect your privacy, <i>VLC media player</i> "
-        "does <b>not</b> collect personal data or transmit them, "
-        "not even in anonymized form, to anyone."
-        "</p>\n"
-        "<p>Nevertheless, <i>VLC</i> is able to automatically retrieve "
-        "information about the media in your playlist from third party "
-        "Internet-based services. This includes cover art, track names, "
-        "artist names and other meta-data."
-        "</p>\n"
-        "<p>Consequently, this may entail identifying some of your media files to third party "
-        "entities. Therefore the <i>VLC</i> developers require your express "
-        "consent for the media player to access the Internet automatically."
-        "</p>\n"
+        "<p>Reframe can look up cover art, track names, artists and other media information "
+        "using third-party Internet services.</p>"
+        "<p>These requests may identify media in your library to those services. "
+        "Choose whether to allow automatic metadata lookups before setting up your library.</p>"
+        "<p>You can change this choice later in Settings &gt; Privacy.</p>"
         ) );
     text->setWordWrap( true );
     text->setTextFormat( Qt::RichText );
 
-    blablaLayout->addWidget( text, 0, 0 ) ;
-
-    QGroupBox *options = new QGroupBox( qtr( "Network Access Policy" ) );
-    QGridLayout *optionsLayout = new QGridLayout( options );
-
-    gLayout->addWidget( blabla, 0, 0, 1, 3 );
-    gLayout->addWidget( options, 1, 0, 1, 3 );
-    int line = 0;
-
+    body->addWidget(text);
     checkbox = new QCheckBox( qtr( "Allow metadata network access" ) );
-    checkbox->setChecked( true );
-    optionsLayout->addWidget( checkbox, line++, 0 );
+    checkbox->setObjectName("metadataNetworkAccess");
+    checkbox->setChecked( var_InheritBool(p_intf, "metadata-network-access") );
+    body->addWidget(checkbox);
 
 #ifdef UPDATE_CHECK
     checkbox2 = new QCheckBox( qtr( "Regularly check for VLC updates" ) );
     checkbox2->setChecked( true );
-    optionsLayout->addWidget( checkbox2, line++, 0 );
+    body->addWidget(checkbox2);
 #endif
 
     QDialogButtonBox *buttonsBox = new QDialogButtonBox( this );
     buttonsBox->addButton( qtr( "Continue" ), QDialogButtonBox::AcceptRole );
 
-    gLayout->addWidget( buttonsBox, 2, 0, 2, 3 );
+    body->addStretch();
+    body->addWidget( buttonsBox );
 
     connect( buttonsBox, &QDialogButtonBox::accepted, this, &FirstRun::save );
     buttonsBox->setFocus();

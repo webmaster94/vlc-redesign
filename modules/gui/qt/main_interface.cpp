@@ -41,7 +41,6 @@
 #include "components/interface_widgets.hpp"     // bgWidget, videoWidget
 #include "components/controller.hpp"            // controllers
 #include "components/playlist/playlist.hpp"     // plWidget
-#include "dialogs/firstrun.hpp"                 // First Run
 #include "dialogs/playlist.hpp"                 // PlaylistDialog
 
 #include "menus.hpp"                            // Menu creation
@@ -118,9 +117,6 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
     i_kc_offset          = false;
     b_maximizedView      = false;
     b_isWindowTiled      = false;
-
-    /* Ask for Privacy */
-    FirstRun::CheckAndRun( this, p_intf );
 
     /**
      *  Configuration and settings
@@ -281,6 +277,8 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
 
     computeMinimumSize();
     setMinimumSize( 900, 500 );
+    // First-run dialogs start only after the final window placement is known.
+    QTimer::singleShot(0, redesignShell, [this] { redesignShell->startFirstRun(); });
     char *preview = var_InheritString( p_intf, "qt-redesign-preview" );
     if( preview && *preview )
     {
@@ -298,6 +296,13 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
         QTimer::singleShot( 1500, this, [this, report] { redesignShell->runSmoke( report ); } );
     }
     free( smoke );
+    char *firstRunSmoke = var_InheritString(p_intf, "qt-redesign-first-run-smoke");
+    if (firstRunSmoke && *firstRunSmoke)
+    {
+        const QString report = QString::fromUtf8(firstRunSmoke);
+        QTimer::singleShot(1500, this, [this, report] { redesignShell->runFirstRunSmoke(report); });
+    }
+    free(firstRunSmoke);
 }
 
 MainInterface::~MainInterface()

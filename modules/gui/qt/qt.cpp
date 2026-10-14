@@ -270,6 +270,10 @@ vlc_module_begin ()
                 "Opt-in widget and playback integration checks", true )
         change_volatile()
         change_private()
+    add_string( "qt-redesign-first-run-smoke", "", "Reframe first-run integration test report",
+                "Opt-in privacy ordering, placement and consent persistence checks", true )
+        change_volatile()
+        change_private()
 
 #ifdef UPDATE_CHECK
     add_bool( "qt-updates-notif", true, UPDATER_TEXT,

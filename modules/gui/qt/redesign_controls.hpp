@@ -19,6 +19,7 @@ QIcon icon(const QString &, const QColor & = QColor("#8f8f8f"));
 QEasingCurve transitionCurve();
 QEasingCurve springCurve();
 void reveal(QWidget *);
+void centerOnParent(QDialog *);
 void animateHeight(QWidget *, bool, int duration = 300);
 void animateWidth(QWidget *, int width, int duration = 208);
 QWidget *fold(const QString &, QWidget *, QWidget *, bool expanded = false);

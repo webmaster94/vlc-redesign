@@ -13,6 +13,7 @@
 #include <QMouseEvent>
 #include "actions_manager.hpp"
 #include "dialogs_provider.hpp"
+#include "dialogs/firstrun.hpp"
 #include "recents.hpp"
 #include <vlc_configuration.h>
 #include <vlc_plugin.h>
@@ -61,12 +62,91 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSlider>
+#include <QButtonGroup>
+#include <QDialogButtonBox>
+#include <QGridLayout>
+#include <QCheckBox>
+#include <QDesktopWidget>
 #include <memory>
 #include <functional>
 #include <algorithm>
 
 namespace
 {
+class OnboardingPreview : public QWidget
+{
+    QPixmap image;
+
+  public:
+    explicit OnboardingPreview(QWidget *parent = nullptr) : QWidget(parent)
+    {
+        setObjectName("onboardingPreview");
+        setMinimumSize(240, 180);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+    void setImage(const QPixmap &pixmap)
+    {
+        image = pixmap;
+        update();
+    }
+
+  protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        if (image.isNull())
+            return;
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        QSize size = image.size();
+        size.scale(contentsRect().size() - QSize(8, 8), Qt::KeepAspectRatio);
+        QRect frame(QPoint(), size);
+        frame.moveCenter(contentsRect().center());
+        painter.drawPixmap(frame, image);
+        painter.setPen(QPen(palette().mid().color(), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(frame.adjusted(-1, -1, 1, 1), 7, 7);
+    }
+};
+class AccentSwatch : public QAbstractButton
+{
+    QColor color;
+
+  public:
+    AccentSwatch(const QString &value, const QString &name, QWidget *parent)
+        : QAbstractButton(parent), color(value)
+    {
+        setObjectName("accentSwatch");
+        setProperty("accentColor", value);
+        setAccessibleName(name);
+        setToolTip(name);
+        setCheckable(true);
+        setCursor(Qt::PointingHandCursor);
+        setFixedSize(52, 52);
+    }
+
+  protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(color);
+        painter.drawEllipse(QRectF(8, 8, 36, 36));
+        if (isChecked() || hasFocus())
+        {
+            painter.setPen(QPen(palette().windowText().color(), isChecked() ? 2 : 1));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawEllipse(QRectF(3, 3, 46, 46));
+        }
+        if (isChecked())
+        {
+            painter.setPen(QPen(color.lightness() > 160 ? QColor("#111111") : QColor("#ffffff"), 2.5,
+                                Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.drawPolyline(QPolygonF() << QPointF(18, 26) << QPointF(24, 32) << QPointF(34, 21));
+        }
+    }
+};
 QString timeText(qint64 seconds)
 {
     return QString("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QChar('0'));
@@ -1156,11 +1236,115 @@ void RedesignShell::batchTracks(const QStringList &supplied, int initialKind)
             });
     Reframe::reveal(dialog);
 }
+void RedesignShell::startFirstRun()
+{
+    setProperty("privacyExpected", var_InheritBool(p_intf, "qt-privacy-ask"));
+    char *firstRunSmoke = var_InheritString(p_intf, "qt-redesign-first-run-smoke");
+    if (firstRunSmoke && *firstRunSmoke)
+        getSettings()->setValue("Redesign/onboarded", false);
+    free(firstRunSmoke);
+    char *preview = var_InheritString(p_intf, "qt-redesign-preview"),
+         *smoke = var_InheritString(p_intf, "qt-redesign-smoke");
+    const bool diagnostic = (preview && *preview) || (smoke && *smoke);
+    free(preview);
+    free(smoke);
+    if (diagnostic)
+        return;
+    auto ready = [this]
+    {
+        if (!getSettings()->value("Redesign/onboarded", false).toBool())
+            onboarding();
+        if (getSettings()->value("Redesign/checkUpdates", false).toBool())
+            QTimer::singleShot(5000, this, [this] { checkUpdates(); });
+    };
+    if (auto privacy = FirstRun::CheckAndRun(window, p_intf))
+    {
+        connect(privacy, &QDialog::finished, this,
+                [this, ready](int result)
+                {
+                    if (result == QDialog::Accepted)
+                        QTimer::singleShot(0, this, ready);
+                });
+        Reframe::reveal(privacy);
+        privacy->raise();
+        privacy->activateWindow();
+    }
+    else
+        ready();
+}
+void RedesignShell::runFirstRunSmoke(const QString &reportPath)
+{
+    auto report = [this, reportPath](const QString &result)
+    {
+        QFile file(reportPath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+            file.write(result.toUtf8());
+        THEDP->quit();
+    };
+    auto privacy = window->findChild<QDialog *>("privacyDialog");
+    auto welcome = window->findChild<QDialog *>("onboardingDialog");
+    if (!property("privacyExpected").toBool())
+    {
+        if (privacy || !welcome || !welcome->isVisible())
+            report("FAIL: saved privacy choice did not skip straight to onboarding on relaunch");
+        else
+            report("PASS: privacy choice persisted and relaunch opened onboarding without another prompt");
+        return;
+    }
+    if (!privacy || !privacy->isVisible() || welcome || QApplication::activeModalWidget() != privacy)
+    {
+        report("FAIL: privacy was not the only visible first-run dialog before onboarding");
+        return;
+    }
+    const QRect available = QApplication::desktop()->availableGeometry(window);
+    QPoint expected = window->frameGeometry().center() - QPoint(privacy->width() / 2, privacy->height() / 2);
+    expected.setX(qBound(available.left(), expected.x(), available.right() - privacy->width() + 1));
+    expected.setY(qBound(available.top(), expected.y(), available.bottom() - privacy->height() + 1));
+    if ((privacy->pos() - expected).manhattanLength() > 3)
+    {
+        report("FAIL: privacy prompt was not centered over the final main window placement");
+        return;
+    }
+    privacy->grab().save(reportPath + ".privacy.png");
+    auto access = privacy->findChild<QCheckBox *>("metadataNetworkAccess");
+    auto buttons = privacy->findChild<QDialogButtonBox *>();
+    if (!access || !buttons || buttons->buttons().isEmpty())
+    {
+        report("FAIL: privacy choice controls missing");
+        return;
+    }
+    access->setChecked(false);
+    buttons->buttons().first()->click();
+    QTimer::singleShot(
+        100, this,
+        [this, report, reportPath]
+        {
+            auto dialog = window->findChild<QDialog *>("onboardingDialog");
+            auto privacy = window->findChild<QDialog *>("privacyDialog");
+            if (!dialog || !dialog->isVisible() || (privacy && privacy->isVisible()) ||
+                QApplication::activeModalWidget() != dialog ||
+                var_InheritBool(p_intf, "metadata-network-access") ||
+                var_InheritBool(p_intf, "qt-privacy-ask"))
+            {
+                report("FAIL: Continue did not save the privacy choice and open onboarding alone");
+                return;
+            }
+            dialog->grab().save(reportPath + ".onboarding.png");
+            report("PASS: centered privacy dialog appeared alone; Continue saved opt-out before onboarding");
+        });
+}
 void RedesignShell::onboarding()
 {
+    if (auto existing = window->findChild<QDialog *>("onboardingDialog"))
+    {
+        existing->raise();
+        return;
+    }
     auto dialog = new Reframe::Dialog(window, "Welcome to Reframe!", QSize(1090, 759));
     dialog->setObjectName("onboardingDialog");
+    dialog->setWindowModality(Qt::WindowModal);
     auto stack = new QStackedWidget;
+    stack->setObjectName("onboardingPages");
     dialog->body->addWidget(stack, 1);
     auto folderPage = new QWidget;
     auto folderLayout = new QVBoxLayout(folderPage);
@@ -1183,53 +1367,164 @@ void RedesignShell::onboarding()
             });
     stack->addWidget(folderPage);
     auto appearance = new QWidget;
-    auto themeLayout = new QVBoxLayout(appearance);
-    themeLayout->addWidget(new QLabel("Select your preferred theme and color."));
-    auto preview = new QLabel;
-    preview->setAlignment(Qt::AlignCenter);
-    preview->setPixmap(window->grab().scaled(900, 500, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    themeLayout->addWidget(preview, 1);
-    themeLayout->addWidget(Reframe::segmented(
-        QStringList() << "Light"
-                      << "Dark"
-                      << "System",
-        getSettings()->value("Redesign/theme", "Dark").toString(), appearance,
-        [this, preview](QString theme)
-        {
-            getSettings()->setValue("Redesign/theme", theme);
-            applyTheme();
-            QTimer::singleShot(50, preview,
-                               [this, preview] {
-                                   preview->setPixmap(window->grab().scaled(900, 500, Qt::KeepAspectRatio,
-                                                                            Qt::SmoothTransformation));
-                               });
-        }));
-    auto colors = new QHBoxLayout;
-    for (const auto &color : QStringList({"#d37918", "#ad4129", "#93751b", "#1a882b", "#008ba8", "#1a56b3",
-                                          "#8035c8", "#ba3a88", "#8f8f8f"}))
+    auto themeLayout = new QHBoxLayout(appearance);
+    themeLayout->setContentsMargins(24, 24, 24, 24);
+    themeLayout->setSpacing(32);
+    auto choices = new QWidget(appearance);
+    choices->setObjectName("onboardingAppearanceControls");
+    choices->setFixedWidth(260);
+    auto choicesLayout = new QVBoxLayout(choices);
+    choicesLayout->setContentsMargins(0, 0, 0, 0);
+    choicesLayout->setSpacing(20);
+    choicesLayout->addStretch();
+    auto heading = new QLabel("Make it yours");
+    heading->setObjectName("onboardingHeading");
+    choicesLayout->addWidget(heading);
+    auto description = new QLabel("Choose your preferred theme and accent color.");
+    description->setWordWrap(true);
+    choicesLayout->addWidget(description);
+    auto themeLabel = new QLabel("Theme");
+    choicesLayout->addWidget(themeLabel);
+    auto preview = new OnboardingPreview(appearance);
+    auto updatePreview = [this, preview] { preview->setImage(window->grab()); };
+    auto themes = Reframe::segmented(QStringList() << "Light"
+                                                   << "Dark"
+                                                   << "System",
+                                     getSettings()->value("Redesign/theme", "Dark").toString(), appearance,
+                                     [this, preview, updatePreview](QString theme)
+                                     {
+                                         getSettings()->setValue("Redesign/theme", theme);
+                                         applyTheme();
+                                         QTimer::singleShot(0, preview, updatePreview);
+                                     });
+    themes->setObjectName("onboardingThemes");
+    choicesLayout->addWidget(themes);
+    choicesLayout->addSpacing(8);
+    choicesLayout->addWidget(new QLabel("Accent color"));
+    auto colors = new QGridLayout;
+    colors->setSpacing(12);
+    auto group = new QButtonGroup(choices);
+    group->setExclusive(true);
+    const QStringList accents(
+        {"#d37918", "#ad4129", "#93751b", "#1a882b", "#008ba8", "#1a56b3", "#8035c8", "#ba3a88", "#8f8f8f"});
+    const QStringList names({"Orange", "Red", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink", "Gray"});
+    for (int i = 0; i < accents.size(); ++i)
     {
-        auto b = new QPushButton;
-        b->setFixedSize(34, 34);
-        b->setStyleSheet("background:" + color + ";");
-        colors->addWidget(b);
-        connect(b, &QPushButton::clicked, dialog,
-                [this, color, preview]
+        const QString color = accents[i];
+        auto b = new AccentSwatch(color, names[i], choices);
+        group->addButton(b);
+        b->setChecked(QColor(accent) == QColor(color));
+        colors->addWidget(b, i / 3, i % 3, Qt::AlignLeft);
+        connect(b, &QAbstractButton::clicked, dialog,
+                [this, color, preview, updatePreview]
                 {
                     getSettings()->setValue("Redesign/accent", color);
                     applyTheme();
-                    preview->setPixmap(
-                        window->grab().scaled(900, 500, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                    QTimer::singleShot(0, preview, updatePreview);
                 });
     }
-    themeLayout->addLayout(colors);
+    choicesLayout->addLayout(colors);
+    choicesLayout->addStretch();
+    themeLayout->addWidget(choices);
+    themeLayout->addWidget(preview, 1);
+    connect(stack, &QStackedWidget::currentChanged, preview,
+            [preview, updatePreview](int index)
+            {
+                if (index == 1)
+                    QTimer::singleShot(0, preview, updatePreview);
+            });
     stack->addWidget(appearance);
-    auto keys = new QLabel(
-        "Learn the basic keyboard shortcuts.\n\nSpace   Play / Pause\nF   Toggle Fullscreen\nV   Cycle "
-        "Subtitle Track\nB   Cycle Audio Track\nN / P   Next / Previous Item\nArrow keys   Seek and "
-        "Volume\nShift + S   Snapshot\nShift + R   Record\n\nFind the full list in the menu.");
-    keys->setAlignment(Qt::AlignCenter);
+    auto keys = new QWidget;
     keys->setObjectName("onboardingKeys");
+    auto keysLayout = new QVBoxLayout(keys);
+    keysLayout->setContentsMargins(32, 8, 32, 8);
+    keysLayout->setSpacing(24);
+    auto keysHeading = new QLabel("Learn the basic keyboard shortcuts");
+    keysHeading->setObjectName("onboardingHeading");
+    keysHeading->setAlignment(Qt::AlignCenter);
+    keysLayout->addWidget(keysHeading);
+    keysLayout->addStretch();
+    auto columns = new QHBoxLayout;
+    columns->setSpacing(40);
+    auto left = new QVBoxLayout, right = new QVBoxLayout;
+    left->setSpacing(14);
+    right->setSpacing(14);
+    auto hotkey = [this](const char *name)
+    {
+        char *value = config_GetPsz(p_intf, name);
+        QString text = value ? QString::fromUtf8(value).section('\t', 0, 0) : QString();
+        free(value);
+        QStringList parts = text.split('+');
+        for (auto &part : parts)
+            if (part.size() == 1)
+                part = part.toUpper();
+        text = parts.join('+');
+        text.replace("Left", QString::fromUtf8("\xE2\x86\x90"));
+        text.replace("Right", QString::fromUtf8("\xE2\x86\x92"));
+        text.replace("Up", QString::fromUtf8("\xE2\x86\x91"));
+        text.replace("Down", QString::fromUtf8("\xE2\x86\x93"));
+        return text.isEmpty() ? QString("Unassigned") : text;
+    };
+    auto shortcut =
+        [keys](QVBoxLayout *column, const QString &glyph, const QString &label, const QStringList &bindings)
+    {
+        auto row = new QWidget(keys);
+        row->setObjectName("onboardingShortcutRow");
+        row->setMinimumHeight(58);
+        auto layout = new QHBoxLayout(row);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(12);
+        auto icon = new QLabel;
+        icon->setObjectName("shortcutIcon");
+        icon->setProperty("glyph", glyph);
+        icon->setPixmap(Reframe::icon(glyph, keys->palette().text().color()).pixmap(28, 28));
+        icon->setFixedSize(32, 32);
+        layout->addWidget(icon);
+        auto title = new QLabel(label);
+        title->setWordWrap(true);
+        title->setObjectName("shortcutAction");
+        layout->addWidget(title, 1);
+        for (int i = 0; i < bindings.size(); ++i)
+        {
+            if (i)
+                layout->addWidget(new QLabel("/"));
+            auto cap = new QLabel(bindings[i]);
+            cap->setObjectName("shortcutKeycap");
+            cap->setAlignment(Qt::AlignCenter);
+            cap->setMinimumSize(38, 38);
+            layout->addWidget(cap);
+        }
+        column->addWidget(row);
+    };
+    shortcut(left, "playpause", "Play / Pause", {hotkey("key-play-pause")});
+    shortcut(left, "seek", "Seek backward / forward",
+             {hotkey("key-jump-extrashort"), hotkey("key-jump+extrashort")});
+    shortcut(left, "next", "Previous / next item", {hotkey("key-prev"), hotkey("key-next")});
+    // VLC's engine supports forward frame stepping only.
+    shortcut(left, "frame", "Next video frame", {hotkey("key-frame-next")});
+    shortcut(left, "subtitles", "Cycle subtitle track", {hotkey("key-subtitle-track")});
+    shortcut(left, "audio", "Cycle audio track", {hotkey("key-audio-track")});
+    shortcut(right, "fullscreen", "Toggle fullscreen", {hotkey("key-toggle-fullscreen")});
+    shortcut(right, "volume", "Increase / decrease volume", {hotkey("key-vol-up"), hotkey("key-vol-down")});
+    shortcut(right, "playlist", "Show / hide queue", {"Q"});
+    shortcut(right, "folder", "Show / hide file browser", {"L"});
+    shortcut(right, "snapshot", "Take a snapshot", {hotkey("key-snapshot")});
+    shortcut(right, "record", "Record", {hotkey("key-record")});
+    columns->addLayout(left, 1);
+    columns->addLayout(right, 1);
+    keysLayout->addLayout(columns);
+    keysLayout->addStretch();
+    keysLayout->addWidget(new QLabel("Find the full list in Settings > Controls > Keyboard Shortcuts."));
     stack->addWidget(keys);
+    connect(stack, &QStackedWidget::currentChanged, keys,
+            [keys](int index)
+            {
+                if (index == 2)
+                    for (auto icon : keys->findChildren<QLabel *>("shortcutIcon"))
+                        icon->setPixmap(Reframe::icon(icon->property("glyph").toString(),
+                                                      QApplication::palette().text().color())
+                                            .pixmap(28, 28));
+            });
     auto footer = new QHBoxLayout;
     auto back = new QPushButton("Back"), next = new QPushButton("Next");
     next->setObjectName("onboardingNext");
@@ -1263,6 +1558,7 @@ void RedesignShell::onboarding()
                 }
             });
     Reframe::reveal(dialog);
+    Reframe::centerOnParent(dialog);
 }
 void RedesignShell::toggleMiniPlayer()
 {
@@ -1916,7 +2212,7 @@ void RedesignShell::checkUpdates()
                 auto data = QJsonDocument::fromJson(process->readAllStandardOutput()).object();
                 const auto tag = data.value("tag_name").toString();
                 if (QVersionNumber::compare(QVersionNumber::fromString(tag.mid(tag.startsWith('v') ? 1 : 0)),
-                                            QVersionNumber(0, 2, 0)) > 0 &&
+                                            QVersionNumber(0, 3, 0)) > 0 &&
                     tag != getSettings()->value("Redesign/lastRelease").toString())
                 {
                     getSettings()->setValue("Redesign/lastRelease", tag);
@@ -2035,6 +2331,85 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
             *check = nullptr;
             report(QString("FAIL: missing flow surface %1").arg(*step));
             return;
+        }
+        auto fail = [next, check, report](const QString &reason)
+        {
+            *next = nullptr;
+            *check = nullptr;
+            report("FAIL: " + reason);
+        };
+        if (*step == 17)
+        {
+            auto choices = surface->findChild<QWidget *>("onboardingAppearanceControls");
+            auto preview = surface->findChild<QWidget *>("onboardingPreview");
+            const auto colors = surface->findChildren<QAbstractButton *>("accentSwatch");
+            QAbstractButton *original = nullptr;
+            int selected = 0;
+            for (auto color : colors)
+                if (color->isChecked())
+                {
+                    original = color;
+                    ++selected;
+                }
+            if (!choices || !preview || colors.size() != 9 || selected != 1 ||
+                choices->mapTo(surface, QPoint(choices->width(), 0)).x() >=
+                    preview->mapTo(surface, QPoint()).x())
+            {
+                fail("appearance choices must be left of the preview with one selected accent");
+                return;
+            }
+            auto changed = colors.first() == original ? colors.last() : colors.first();
+            changed->click();
+            if (!changed->isChecked() || original->isChecked() ||
+                QColor(getSettings()->value("Redesign/accent").toString()) !=
+                    QColor(changed->property("accentColor").toString()) ||
+                QApplication::palette().highlight().color() !=
+                    QColor(changed->property("accentColor").toString()))
+            {
+                fail("accent selection did not update its check state, saved choice and live theme");
+                return;
+            }
+            original->click();
+            const QString savedTheme = getSettings()->value("Redesign/theme", "Dark").toString();
+            auto themes = surface->findChild<QWidget *>("onboardingThemes");
+            for (auto button : themes->findChildren<QPushButton *>())
+                if (button->text() == "Light")
+                    button->click();
+            if (getSettings()->value("Redesign/theme").toString() != "Light" ||
+                QApplication::palette().window().color().lightness() < 128)
+            {
+                fail("theme selection did not update the live appearance");
+                return;
+            }
+            for (auto button : themes->findChildren<QPushButton *>())
+                if (button->text() == savedTheme)
+                    button->click();
+        }
+        if (*step == 18)
+        {
+            const auto rows = surface->findChildren<QWidget *>("onboardingShortcutRow");
+            if (rows.size() != 12)
+            {
+                fail("shortcut guide must contain twelve individual icon and keycap rows");
+                return;
+            }
+            for (auto row : rows)
+            {
+                auto icon = row->findChild<QLabel *>("shortcutIcon");
+                const auto caps = row->findChildren<QLabel *>("shortcutKeycap");
+                if (!icon || !icon->pixmap() || icon->pixmap()->isNull() || caps.isEmpty() ||
+                    row->height() < 58)
+                {
+                    fail("shortcut row is missing its icon, keycaps or required spacing");
+                    return;
+                }
+                for (auto other : rows)
+                    if (other != row && row->geometry().intersects(other->geometry()))
+                    {
+                        fail("shortcut rows overlap");
+                        return;
+                    }
+            }
         }
         surface->grab().save(reportPath + QString(".flow%1.png").arg(*step));
         for (auto scroll : surface->findChildren<QScrollArea *>())

@@ -9,6 +9,8 @@
 #include <QLabel>
 #include <QButtonGroup>
 #include <QTimer>
+#include <QApplication>
+#include <QDesktopWidget>
 #include <cmath>
 
 namespace Reframe
@@ -43,6 +45,16 @@ QEasingCurve springCurve()
 void reveal(QWidget *widget)
 {
     widget->show();
+}
+void centerOnParent(QDialog *dialog)
+{
+    QWidget *parent = dialog->parentWidget();
+    const QRect available = QApplication::desktop()->availableGeometry(parent);
+    dialog->resize(dialog->size().boundedTo(available.size() - QSize(32, 32)));
+    const QPoint center = parent ? parent->frameGeometry().center() : available.center();
+    const QPoint topLeft = center - QPoint(dialog->width() / 2, dialog->height() / 2);
+    dialog->move(qBound(available.left(), topLeft.x(), available.right() - dialog->width() + 1),
+                 qBound(available.top(), topLeft.y(), available.bottom() - dialog->height() + 1));
 }
 void animateHeight(QWidget *widget, bool open, int duration)
 {

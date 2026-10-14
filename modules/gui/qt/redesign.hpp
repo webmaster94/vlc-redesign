@@ -47,6 +47,8 @@ class RedesignShell : public QWidget
     void openNetwork();
     void customize();
     void onboarding();
+    void startFirstRun();
+    void runFirstRunSmoke(const QString &);
     void showQueue(int tab = 0);
     void toggleQueue();
     bool isQueueVisible() const;

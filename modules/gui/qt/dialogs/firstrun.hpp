@@ -22,17 +22,18 @@
  *****************************************************************************/
 
 #include "qt.hpp"
-#include "util/qvlcframe.hpp"
+#include "redesign_controls.hpp"
 
 class QCheckBox;
-class FirstRun : public QVLCDialog
+class FirstRun : public Reframe::Dialog
 {
     Q_OBJECT
     public:
-        static void CheckAndRun( QWidget *_p, intf_thread_t *p_intf )
+        static FirstRun *CheckAndRun( QWidget *_p, intf_thread_t *p_intf )
         {
             if( var_InheritBool( p_intf, "qt-privacy-ask") )
-                new FirstRun( _p, p_intf );
+                return new FirstRun( _p, p_intf );
+            return nullptr;
         }
         FirstRun( QWidget *, intf_thread_t * );
     private:

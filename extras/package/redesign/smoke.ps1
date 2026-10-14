@@ -5,9 +5,23 @@ $ErrorActionPreference = 'Stop'
 $Artifacts = (Resolve-Path -LiteralPath $Artifacts).Path
 $testRoot = Join-Path $env:RUNNER_TEMP 'reframe-integration'
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
-$portableArchive = Join-Path $Artifacts 'Reframe-3.0.24-r2-win64-portable.zip'
+$portableArchive = Join-Path $Artifacts 'Reframe-3.0.24-r3-win64-portable.zip'
 Expand-Archive -LiteralPath $portableArchive -DestinationPath (Join-Path $testRoot 'portable')
 $app = Join-Path $testRoot 'portable\Reframe\reframe.exe'
+# Exercise normal startup with a fresh portable profile, including the real consent dialog.
+foreach ($launch in 1..2) {
+    $firstRunReport = Join-Path $testRoot "first-run-$launch.txt"
+    $firstRunArgs = @('--no-one-instance', "--qt-redesign-first-run-smoke=$firstRunReport")
+    if ($launch -eq 1) { $firstRunArgs += '--qt-privacy-ask' }
+    $firstRun = Start-Process -FilePath $app -ArgumentList $firstRunArgs -PassThru -WindowStyle Hidden
+    if (-not $firstRun.WaitForExit(15000)) { $firstRun.Kill(); throw 'First-run checks timed out' }
+    if (-not (Test-Path -LiteralPath $firstRunReport)) { throw 'First-run report was not written' }
+    $result = Get-Content -LiteralPath $firstRunReport -Raw
+    Copy-Item -LiteralPath $firstRunReport -Destination $Artifacts
+    Get-ChildItem -LiteralPath $testRoot -Filter 'first-run-*.png' | Copy-Item -Destination $Artifacts
+    if (-not $result.StartsWith('PASS:')) { throw $result }
+    Write-Output $result
+}
 $preview = Join-Path $testRoot 'preview.png'
 $render = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--no-qt-privacy-ask',"--qt-redesign-preview=$preview") -PassThru -WindowStyle Hidden
 if (-not $render.WaitForExit(30000)) { $render.Kill(); throw 'Player rendering timed out' }
@@ -78,7 +92,7 @@ New-Item -Path "$classes\.mp4" -Force | Out-Null
 Set-Item -Path "$classes\.mp4" -Value 'VLC.mp4'
 
 $destination = Join-Path $testRoot 'installed'
-$setup = Join-Path $Artifacts 'Reframe-3.0.24-r2-win64.exe'
+$setup = Join-Path $Artifacts 'Reframe-3.0.24-r3-win64.exe'
 foreach ($pass in 1..2) {
     $install = Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$destination") -Wait -PassThru -WindowStyle Hidden
     if ($install.ExitCode -ne 0) { throw "Installer failed on pass $pass" }

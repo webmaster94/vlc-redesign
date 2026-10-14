@@ -121,6 +121,25 @@ QIcon lineIcon(const QString &name, const QColor &color = QColor("#b8b8b8"))
         p.drawRoundedRect(QRectF(7, 6, 3, 12), 1, 1);
         p.drawRoundedRect(QRectF(14, 6, 3, 12), 1, 1);
     }
+    else if (name == "playpause")
+    {
+        p.setBrush(color);
+        p.drawPolygon(QPolygonF() << QPointF(3, 6) << QPointF(11, 12) << QPointF(3, 18));
+        p.drawRoundedRect(QRectF(14, 6, 2, 12), 1, 1);
+        p.drawRoundedRect(QRectF(19, 6, 2, 12), 1, 1);
+    }
+    else if (name == "seek")
+    {
+        p.drawPolyline(QPolygonF() << QPointF(10, 6) << QPointF(3, 12) << QPointF(10, 18));
+        p.drawPolyline(QPolygonF() << QPointF(14, 6) << QPointF(21, 12) << QPointF(14, 18));
+    }
+    else if (name == "frame")
+    {
+        p.drawRoundedRect(QRectF(2, 4, 20, 16), 2, 2);
+        p.setBrush(color);
+        p.drawPolygon(QPolygonF() << QPointF(7, 8) << QPointF(13, 12) << QPointF(7, 16));
+        line(16, 8, 16, 16);
+    }
     else if (name == "music")
     {
         line(10, 5, 10, 17);
@@ -1091,15 +1110,6 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     layoutControls();
     applyTheme();
     showLibrary("Home");
-    char *previewOption = var_InheritString(p_intf, "qt-redesign-preview"),
-         *smokeOption = var_InheritString(p_intf, "qt-redesign-smoke");
-    const bool diagnostic = (previewOption && *previewOption) || (smokeOption && *smokeOption);
-    free(previewOption);
-    free(smokeOption);
-    if (!getSettings()->value("Redesign/onboarded", false).toBool() && !diagnostic)
-        QTimer::singleShot(500, this, [this] { onboarding(); });
-    if (getSettings()->value("Redesign/checkUpdates", false).toBool())
-        QTimer::singleShot(5000, this, [this] { checkUpdates(); });
     if (THEMIM->getIM()->hasInput())
         showPlayer();
 }
@@ -1201,6 +1211,14 @@ void RedesignShell::applyTheme()
                .arg(selected.green())
                .arg(selected.blue())
                .arg(bg);
+    css += QString("QDialog#onboardingDialog QLabel#onboardingHeading {font-size:24px;color:%1;} "
+                   "QWidget#onboardingThemes {background:%2;border-radius:6px;} "
+                   "QWidget#onboardingThemes QPushButton {border:0;padding:10px 8px;} "
+                   "QWidget#onboardingThemes QPushButton:checked {background:%3;color:%4;} "
+                   "QLabel#shortcutKeycap {background:%2;border:1px solid %3;border-radius:6px;"
+                   "padding:0 8px;font-size:13px;color:%1;} "
+                   "QLabel#shortcutAction {font-size:15px;} ")
+               .arg(light ? QString("#303030") : QString("#c6c6c6"), panel, line, accent);
     qApp->setStyleSheet(css);
     for (QToolButton *b : findChildren<QToolButton *>())
     {

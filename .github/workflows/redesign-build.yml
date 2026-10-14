@@ -53,7 +53,7 @@ jobs:
           make -j4 fetch PKGS_FOUND= 2>&1 | tee "$GITHUB_WORKSPACE/build-validation/dependency-source.log"
           cd "$GITHUB_WORKSPACE"
           mkdir -p dist
-          tar -cJf dist/Reframe-3.0.24-r2-dependency-source.tar.xz -C contrib tarballs
+          tar -cJf dist/Reframe-3.0.24-r3-dependency-source.tar.xz -C contrib tarballs
           python3 extras/package/redesign/collect-notices.py --archives contrib/tarballs --existing build-validation/contrib/x86_64-w64-mingw32/share/licenses --output build-validation/dependency-licenses
       - name: Build the NSIS installer
         env:
@@ -64,7 +64,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/build-validation"
           python3 ../extras/package/redesign/package.py --payload win64/vlc-3.0.24 --licenses dependency-licenses --output "$GITHUB_WORKSPACE/dist"
           cd "$GITHUB_WORKSPACE"
-          git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r2-source.tar.xz
+          git archive --format=tar --prefix=reframe-source/ HEAD | xz > dist/Reframe-3.0.24-r3-source.tar.xz
           cp doc/redesign/credits.txt dist/CREDITS.txt
           (cd dist && sha256sum *source.tar.xz) >> dist/SHA256SUMS
       - name: Keep installer and portable player
@@ -114,4 +114,6 @@ jobs:
             artifacts/controls.txt.page*.png
             artifacts/controls.txt.flow*.png
             artifacts/controls.txt
+            artifacts/first-run-*.txt
+            artifacts/first-run-*.png
             artifacts/waveform.png
