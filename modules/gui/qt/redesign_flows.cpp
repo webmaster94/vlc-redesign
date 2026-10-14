@@ -1323,8 +1323,8 @@ void RedesignShell::runFirstRunSmoke(const QString &reportPath)
             auto privacy = window->findChild<QDialog *>("privacyDialog");
             if (!dialog || !dialog->isVisible() || (privacy && privacy->isVisible()) ||
                 QApplication::activeModalWidget() != dialog ||
-                var_InheritBool(p_intf, "metadata-network-access") ||
-                var_InheritBool(p_intf, "qt-privacy-ask"))
+                config_GetInt(p_intf, "metadata-network-access") ||
+                config_GetInt(p_intf, "qt-privacy-ask"))
             {
                 report("FAIL: Continue did not save the privacy choice and open onboarding alone");
                 return;

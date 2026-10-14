@@ -12,7 +12,6 @@ $app = Join-Path $testRoot 'portable\Reframe\reframe.exe'
 foreach ($launch in 1..2) {
     $firstRunReport = Join-Path $testRoot "first-run-$launch.txt"
     $firstRunArgs = @('--no-one-instance', "--qt-redesign-first-run-smoke=$firstRunReport")
-    if ($launch -eq 1) { $firstRunArgs += '--qt-privacy-ask' }
     $firstRun = Start-Process -FilePath $app -ArgumentList $firstRunArgs -PassThru -WindowStyle Hidden
     if (-not $firstRun.WaitForExit(15000)) { $firstRun.Kill(); throw 'First-run checks timed out' }
     if (-not (Test-Path -LiteralPath $firstRunReport)) { throw 'First-run report was not written' }
@@ -20,6 +19,9 @@ foreach ($launch in 1..2) {
     Copy-Item -LiteralPath $firstRunReport -Destination $Artifacts
     Get-ChildItem -LiteralPath $testRoot -Filter 'first-run-*.png' | Copy-Item -Destination $Artifacts
     if (-not $result.StartsWith('PASS:')) { throw $result }
+    if ($launch -eq 2 -and -not $result.Contains('relaunch opened onboarding without another prompt')) {
+        throw 'Saved privacy choice was not respected on the second launch'
+    }
     Write-Output $result
 }
 $preview = Join-Path $testRoot 'preview.png'
