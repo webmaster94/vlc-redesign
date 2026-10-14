@@ -133,6 +133,16 @@ QIcon lineIcon(const QString &name, const QColor &color = QColor("#b8b8b8"))
         p.drawPolyline(QPolygonF() << QPointF(10, 6) << QPointF(3, 12) << QPointF(10, 18));
         p.drawPolyline(QPolygonF() << QPointF(14, 6) << QPointF(21, 12) << QPointF(14, 18));
     }
+    else if (name == "chevrondown" || name == "chevronup")
+    {
+        const bool down = name == "chevrondown";
+        p.drawPolyline(QPolygonF() << QPointF(6, down ? 9 : 15) << QPointF(12, down ? 15 : 9)
+                                   << QPointF(18, down ? 9 : 15));
+    }
+    else if (name == "check")
+    {
+        p.drawPolyline(QPolygonF() << QPointF(4, 12) << QPointF(10, 18) << QPointF(21, 5));
+    }
     else if (name == "frame")
     {
         p.drawRoundedRect(QRectF(2, 4, 20, 16), 2, 2);
@@ -450,25 +460,67 @@ class ClickSlider : public QSlider
 class VolumeSlider : public ClickSlider
 {
   public:
-    explicit VolumeSlider(QWidget *parent) : ClickSlider(parent) {}
+    explicit VolumeSlider(QWidget *parent) : ClickSlider(parent)
+    {
+        setFixedSize(112, 30);
+        setCursor(Qt::PointingHandCursor);
+    }
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        const QRect area = rect().adjusted(1, 8, -1, -8);
+        const QRectF area = QRectF(rect()).adjusted(4, 6, -4, -6);
         QPainterPath wedge;
-        wedge.moveTo(area.bottomLeft());
-        wedge.lineTo(area.topRight());
-        wedge.lineTo(area.bottomRight());
+        wedge.moveTo(area.left() + 2, area.center().y() - 3);
+        wedge.lineTo(area.right() - 3, area.top());
+        wedge.quadTo(area.topRight(), QPointF(area.right(), area.top() + 3));
+        wedge.lineTo(area.right(), area.bottom() - 3);
+        wedge.quadTo(area.bottomRight(), QPointF(area.right() - 3, area.bottom()));
+        wedge.lineTo(area.left() + 2, area.center().y() + 3);
+        wedge.quadTo(QPointF(area.left(), area.center().y() + 3),
+                     QPointF(area.left(), area.center().y() + 1));
+        wedge.lineTo(area.left(), area.center().y() - 1);
+        wedge.quadTo(QPointF(area.left(), area.center().y() - 3),
+                     QPointF(area.left() + 2, area.center().y() - 3));
         wedge.closeSubpath();
-        painter.fillPath(wedge, palette().base());
-        const qreal ratio = (value() - minimum()) / double(maximum() - minimum());
-        painter.setClipRect(QRect(area.left(), area.top(), qRound(area.width() * ratio), area.height()));
-        painter.fillPath(wedge, value() > 100 ? QColor("#c78c42") : QColor("#648447"));
+        painter.fillPath(wedge, palette().button());
+        const qreal ratio = (value() - minimum()) / double(qMax(1, maximum() - minimum()));
+        painter.setClipRect(QRectF(area.left(), area.top(), area.width() * ratio, area.height()));
+        QLinearGradient gradient(area.topLeft(), area.topRight());
+        gradient.setColorAt(0, QColor("#6eaa50"));
+        gradient.setColorAt(.5, QColor("#c4a345"));
+        gradient.setColorAt(1, QColor("#bf5443"));
+        painter.fillPath(wedge, gradient);
         painter.setClipping(false);
-        painter.setPen(QPen(palette().text().color(), 2));
-        const int x = area.left() + qRound(area.width() * ratio);
-        painter.drawLine(x, area.bottom() - qRound(area.height() * ratio), x, area.bottom());
+        painter.setPen(QPen(palette().text().color(), 1));
+        painter.drawPath(wedge);
+        if (underMouse() || hasFocus())
+        {
+            const qreal x = area.left() + area.width() * ratio;
+            const qreal height = 3 + 6 * ratio;
+            painter.setPen(QPen(palette().windowText().color().lighter(160), 2));
+            painter.drawLine(QPointF(x, area.center().y() - height), QPointF(x, area.center().y() + height));
+        }
+    }
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (event->buttons() & Qt::LeftButton)
+            setValue(minimum() + qRound(qBound(0.0, (event->pos().x() - 4) / double(width() - 8), 1.0) *
+                                        (maximum() - minimum())));
+        else
+            ClickSlider::mouseMoveEvent(event);
+    }
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton)
+        {
+            setFocus();
+            setValue(minimum() + qRound(qBound(0.0, (event->pos().x() - 4) / double(width() - 8), 1.0) *
+                                        (maximum() - minimum())));
+            event->accept();
+        }
+        else
+            ClickSlider::mousePressEvent(event);
     }
 };
 
@@ -487,6 +539,12 @@ class MediaDelegate : public QStyledItemDelegate
         p->setRenderHint(QPainter::Antialiasing);
         if (o.rect.height() < 100)
         {
+            if (o.state & QStyle::State_Selected)
+            {
+                QColor tint = o.palette.highlight().color();
+                tint.setAlpha(40);
+                p->fillRect(o.rect, tint);
+            }
             QIcon icon = qvariant_cast<QIcon>(i.data(Qt::DecorationRole));
             icon.paint(p, QRect(o.rect.left() + 8, o.rect.top() + 4, 70, 40));
             p->setPen(o.palette.text().color());
@@ -496,7 +554,7 @@ class MediaDelegate : public QStyledItemDelegate
         }
         QRect r = o.rect.adjusted(8, 6, -8, -6), image(r.left(), r.top(), r.width(), r.width() * 9 / 16);
         p->setPen(Qt::NoPen);
-        p->setBrush(o.state & QStyle::State_Selected ? o.palette.highlight() : o.palette.alternateBase());
+        p->setBrush(o.palette.alternateBase());
         p->drawRoundedRect(image, 8, 8);
         QIcon icon = qvariant_cast<QIcon>(i.data(Qt::DecorationRole));
         if (i.data(Qt::UserRole + 1).toBool())
@@ -511,6 +569,16 @@ class MediaDelegate : public QStyledItemDelegate
         else
         {
             icon.paint(p, image.adjusted(65, 30, -65, -30));
+        }
+        if (o.state & QStyle::State_Selected)
+        {
+            QColor tint = o.palette.highlight().color();
+            tint.setAlpha(45);
+            p->setBrush(tint);
+            tint.setAlpha(150);
+            p->setPen(QPen(tint, 1));
+            p->drawRoundedRect(image, 8, 8);
+            p->setPen(Qt::NoPen);
         }
         const qreal progress = i.data(Qt::UserRole + 2).toReal();
         if (progress > 0)
@@ -608,7 +676,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     cacheDirectory += "/thumbnails";
     QDir().mkpath(cacheDirectory);
     QVBoxLayout *root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
+    root->setContentsMargins(1, 1, 1, 1);
     root->setSpacing(0);
     header = new TitleBar(this);
     header->setObjectName("titleBar");
@@ -629,7 +697,13 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     auto navToggle = button("list");
     navToggle->setToolTip("Toggle navigation sidebar");
     title->addWidget(navToggle);
-    connect(navToggle, &QToolButton::clicked, this, [this] { setNavigationWidth(!compact); });
+    connect(navToggle, &QToolButton::clicked, this,
+            [this]
+            {
+                leaveFullscreen();
+                sidebar->show();
+                setNavigationWidth(!compact);
+            });
     title->addStretch();
     auto titleLabel = new QLabel("Reframe");
     titleLabel->setObjectName("windowTitle");
@@ -638,7 +712,6 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     // operator<< returns a reference. Own the list before range iteration.
     const QStringList windowActions = QStringList() << "minimize"
                                                     << "maximize"
-                                                    << "fullscreen"
                                                     << "close";
     for (const QString &name : windowActions)
     {
@@ -970,7 +1043,6 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
             [mute](bool m) { mute->setIcon(lineIcon(m ? "mute" : "volume")); });
     volume = new VolumeSlider(transport);
     volume->setRange(0, qMax(1, int(config_GetInt(p_intf, "qt-max-volume"))));
-    volume->setFixedWidth(84);
     volume->setAccessibleName("Volume");
     volume->setObjectName("volumeSlider");
     volume->setValue(qMax(0, qRound(playlist_VolumeGet(THEPL) * 100)));
@@ -993,6 +1065,11 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     bar->addWidget(sub);
     bar->addWidget(settings);
     bar->addWidget(playlist);
+    auto fullscreen = button("fullscreen");
+    fullscreen->setToolTip("Toggle fullscreen");
+    fullscreen->setObjectName("fullscreenButton");
+    bar->addWidget(fullscreen);
+    connect(fullscreen, &QToolButton::clicked, this, [this] { toggleFullscreen(); });
     eq->setToolTip("Audio effects");
     sub->setToolTip("Subtitles and synchronization");
     settings->setToolTip("Settings");
@@ -1033,7 +1110,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
     connect(chromeTimer, &QTimer::timeout, this,
             [this]
             {
-                if (minimal || getSettings()->value("Redesign/autoHideControls").toString() == "Always")
+                if (chromeCanHide())
                 {
                     Reframe::animateHeight(header, false, 300);
                     Reframe::animateHeight(transport, false, 300);
@@ -1075,7 +1152,9 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
                 if (!window->isActiveWindow())
                     return;
                 const auto point = window->mapFromGlobal(QCursor::pos());
-                if (!minimal)
+                if (!chromeCanHide())
+                    return;
+                if (!minimal && !window->isFullScreen())
                 {
                     if (getSettings()->value("Redesign/autoHideControls").toString() == "Always" &&
                         isPlayerVisible() && THEMIM->getIM()->hasInput())
@@ -1089,7 +1168,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
                     }
                     return;
                 }
-                if (!config_GetInt(p_intf, "qt-fs-controller"))
+                if (window->isFullScreen() && !config_GetInt(p_intf, "qt-fs-controller"))
                     return;
                 if (point.x() < 0 || point.x() > window->width())
                     return;
@@ -1097,19 +1176,20 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
                 {
                     if (!header->isVisible())
                         Reframe::animateHeight(header, true, 300);
-                    chromeTimer->start(1500);
+                    chromeTimer->start(qMax(500, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
                 }
                 else if (point.y() < window->height() && point.y() > window->height() - 80)
                 {
                     if (!transport->isVisible())
                         Reframe::animateHeight(transport, true, 300);
-                    chromeTimer->start(1500);
+                    chromeTimer->start(qMax(500, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
                 }
             });
     edgeTimer->start();
     layoutControls();
     applyTheme();
     showLibrary("Home");
+    setProperty("windowReady", true);
     if (THEMIM->getIM()->hasInput())
         showPlayer();
 }
@@ -1143,6 +1223,7 @@ void RedesignShell::applyTheme()
     p.setColor(QPalette::Base, QColor(bg));
     p.setColor(QPalette::AlternateBase, QColor(panel));
     p.setColor(QPalette::Button, QColor(panel));
+    p.setColor(QPalette::Mid, QColor(line));
     p.setColor(QPalette::Text, QColor(text));
     p.setColor(QPalette::WindowText, QColor(text));
     p.setColor(QPalette::ButtonText, QColor(text));
@@ -1156,6 +1237,7 @@ void RedesignShell::applyTheme()
     QString css =
         QString(
             "QWidget { color:%1; } QWidget#redesignShell, QWidget#browser, QDialog { background:%2; }"
+            "QWidget#redesignShell {border:1px solid %4;} "
             "QWidget#titleBar, QWidget#navigation, QWidget#transport { background:%3; } QWidget#navigation { "
             "border-radius:7px; }"
             "QToolButton { background:transparent; border:0; border-radius:5px; padding:3px; }"
@@ -1203,6 +1285,12 @@ void RedesignShell::applyTheme()
            "QComboBox::down-arrow {image:url(:/reframe/chevron.svg);width:12px;height:12px;} "
            "QLabel#sectionHeading,QLabel#dialogHeading {color:" +
            (light ? QString("#303030") : QString("#c6c6c6")) + ";}";
+    css += QString("QWidget#trackPicker {background:%1;border-radius:10px;} "
+                   "QListWidget#trackChoices,QListWidget#outputDeviceChoices {background:%2;border:0;} "
+                   "QPushButton#trackPreferencesButton {background:%2;border:0;} "
+                   "QListWidget {background:%2;border:1px solid %3;outline:0;} "
+                   "QListWidget::item {padding:8px;} ")
+               .arg(panel, bg, line);
     const QColor selected(accent);
     css += QString("QSlider::sub-page:horizontal,QSlider::add-page:vertical {background:rgba(%1,%2,%3,65);} "
                    "QAbstractScrollArea::corner {background:%4;border:0;} "
@@ -1300,6 +1388,7 @@ void RedesignShell::setMinimal(bool m)
 
 void RedesignShell::showLibrary(const QString &name)
 {
+    leaveFullscreen();
     const bool alongside = THEMIM->getIM()->hasInput() && isPlayerVisible() && name != "Home";
     section = name;
     musicGroup.clear();
@@ -1697,6 +1786,7 @@ void RedesignShell::nextThumbnail()
 
 void RedesignShell::openSettings(int selectedPage)
 {
+    leaveFullscreen();
     if (settingsDialog)
     {
         static_cast<RedesignPreferences *>(settingsDialog)->selectPage(selectedPage);

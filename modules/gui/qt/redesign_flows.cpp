@@ -67,6 +67,8 @@
 #include <QGridLayout>
 #include <QCheckBox>
 #include <QDesktopWidget>
+#include <QSizeGrip>
+#include <QCursor>
 #include <memory>
 #include <functional>
 #include <algorithm>
@@ -376,23 +378,30 @@ void RedesignShell::openTracks(int selected)
     }
     auto panel = new QWidget(this);
     panel->setObjectName("trackPicker");
-    panel->setFixedWidth(300);
+    panel->setFixedWidth(360);
     sidePanel = panel;
     auto layout = new QVBoxLayout(panel);
     layout->setContentsMargins(16, 8, 16, 20);
     layout->setSpacing(20);
     auto stack = new QStackedWidget;
-    auto tabs = Reframe::segmented(
-        QStringList() << "Video"
-                      << "Audio"
-                      << "Subtitles",
-        selected == 5   ? "Video"
-        : selected == 6 ? "Audio"
-                        : "Subtitles",
-        panel,
-        [stack](const QString &label) {
-            stack->setCurrentIndex(QStringList({"Video", "Audio", "Subtitles"}).indexOf(label));
-        });
+    auto tabs = new QWidget(panel);
+    auto tabLayout = new QHBoxLayout(tabs);
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->setSpacing(0);
+    auto tabGroup = new QButtonGroup(tabs);
+    for (int page = 5; page <= 7; ++page)
+    {
+        const QString label = QStringList({"Video", "Audio", "Subtitles"})[page - 5];
+        auto tab = new QPushButton(label);
+        tab->setObjectName("mediaTab");
+        tab->setIcon(Reframe::icon(page == 5 ? "videos" : page == 6 ? "audio" : "subtitles"));
+        tab->setIconSize(QSize(20, 20));
+        tab->setCheckable(true);
+        tab->setChecked(selected == page);
+        tabGroup->addButton(tab);
+        tabLayout->addWidget(tab, 1);
+        connect(tab, &QPushButton::clicked, stack, [stack, page] { stack->setCurrentIndex(page - 5); });
+    }
     layout->addWidget(tabs);
     layout->addWidget(stack, 1);
     for (int page = 5; page <= 7; ++page)
@@ -400,8 +409,14 @@ void RedesignShell::openTracks(int selected)
         auto widget = new QWidget;
         auto controls = new QVBoxLayout(widget);
         controls->setContentsMargins(0, 0, 0, 0);
+        controls->setSpacing(16);
         controls->addWidget(new QLabel("Embedded Tracks"));
         auto list = new QListWidget;
+        list->setObjectName("trackChoices");
+        list->setItemDelegate(Reframe::choiceDelegate(list));
+        list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        list->setFixedHeight(44);
         controls->addWidget(list);
         auto update = [this, list, page]
         {
@@ -409,6 +424,8 @@ void RedesignShell::openTracks(int selected)
             if (!input)
             {
                 list->clear();
+                list->setFixedHeight(44);
+                new QListWidgetItem("No media playing", list);
                 return;
             }
             const char *variable = page == 5 ? "video-es" : page == 6 ? "audio-es" : "spu-es";
@@ -435,6 +452,7 @@ void RedesignShell::openTracks(int selected)
                     list->setCurrentItem(item);
             }
             var_FreeList(&values, &texts);
+            list->setFixedHeight(qBound(44, list->count() * 44, 220));
         };
         update();
         auto timer = new QTimer(list);
@@ -455,17 +473,36 @@ void RedesignShell::openTracks(int selected)
                 });
         if (page == 6)
         {
-            controls->addWidget(new QLabel("Output Device"));
-            auto combo = new QComboBox;
-            controls->addWidget(combo);
-            auto output = THEMIM->getAout();
-            if (output)
+            auto outputHeader = new QHBoxLayout;
+            outputHeader->addWidget(new QLabel("Output Device"), 1);
+            auto reload = button("replay");
+            reload->setToolTip("Refresh output devices");
+            outputHeader->addWidget(reload);
+            controls->addLayout(outputHeader);
+            auto devices = new QListWidget;
+            devices->setObjectName("outputDeviceChoices");
+            devices->setItemDelegate(Reframe::choiceDelegate(devices));
+            devices->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            controls->addWidget(devices);
+            auto refreshDevices = [this, devices]
             {
+                devices->clear();
+                auto output = THEMIM->getAout();
+                if (!output)
+                {
+                    new QListWidgetItem("Start playback to select a device", devices);
+                    devices->setFixedHeight(44);
+                    return;
+                }
+                char *active = aout_DeviceGet(output);
                 char **ids, **names;
                 int count = aout_DevicesList(output, &ids, &names);
                 for (int i = 0; i < count; ++i)
                 {
-                    combo->addItem(qfu(names[i]), qfu(ids[i]));
+                    auto item = new QListWidgetItem(qfu(names[i]), devices);
+                    item->setData(Qt::UserRole, qfu(ids[i]));
+                    if (qfu(active ? active : "") == qfu(ids[i]))
+                        devices->setCurrentItem(item);
                     free(ids[i]);
                     free(names[i]);
                 }
@@ -474,17 +511,30 @@ void RedesignShell::openTracks(int selected)
                     free(ids);
                     free(names);
                 }
+                free(active);
+                if (count <= 0)
+                {
+                    auto item = new QListWidgetItem("Default output device", devices);
+                    item->setData(Qt::UserRole, QString());
+                    devices->setCurrentItem(item);
+                }
+                devices->setFixedHeight(qBound(44, devices->count() * 44, 220));
                 vlc_object_release(output);
-            }
-            connect(combo, QOverload<int>::of(&QComboBox::activated), this,
-                    [this, combo](int i)
+            };
+            refreshDevices();
+            connect(reload, &QToolButton::clicked, devices, refreshDevices);
+            connect(THEMIM, &MainInputManager::inputChanged, devices,
+                    [refreshDevices](bool) { refreshDevices(); });
+            connect(devices, &QListWidget::itemClicked, this,
+                    [this](QListWidgetItem *item)
                     {
                         auto output = THEMIM->getAout();
-                        if (output)
+                        if (output && item->data(Qt::UserRole).isValid())
                         {
-                            aout_DeviceSet(output, qtu(combo->itemData(i).toString()));
-                            vlc_object_release(output);
+                            aout_DeviceSet(output, qtu(item->data(Qt::UserRole).toString()));
                         }
+                        if (output)
+                            vlc_object_release(output);
                     });
         }
         else if (page == 7)
@@ -520,9 +570,10 @@ void RedesignShell::openTracks(int selected)
                     });
         }
         auto preferences = new QPushButton("Show Preferences");
+        preferences->setObjectName("trackPreferencesButton");
+        controls->addStretch();
         controls->addWidget(preferences);
         connect(preferences, &QPushButton::clicked, this, [this, page] { openMediaSettings(page); });
-        controls->addStretch();
         stack->addWidget(widget);
     }
     auto close = new QPushButton("Close");
@@ -531,7 +582,7 @@ void RedesignShell::openTracks(int selected)
     stack->setCurrentIndex(selected - 5);
     bodyLayout->addWidget(panel);
     panel->show();
-    Reframe::animateWidth(panel, 300, 104);
+    Reframe::animateWidth(panel, 360, 104);
 }
 void RedesignShell::applyMediaBindings()
 {
@@ -887,7 +938,7 @@ void RedesignShell::updateQueue()
         signature += QString::number(ids[i]) + names[i] + QString::number(durations[i]);
     if (list->property("signature").toString() != signature)
     {
-        QSignalBlocker block(list->model());
+        QSignalBlocker block(list);
         list->clear();
         for (int i = 0; i < names.size(); ++i)
         {
@@ -1005,12 +1056,14 @@ void RedesignShell::openNetwork()
             });
     Reframe::reveal(dialog);
 }
-void RedesignShell::newPlaylist(const QString &id)
+void RedesignShell::newPlaylist(const QString &id, const QStringList &initialPaths)
 {
     auto dialog =
         new Reframe::Dialog(window, id.isEmpty() ? "New Playlist" : "Edit Playlist", QSize(713, 589));
+    dialog->setObjectName("playlistEditor");
     auto data = getSettings()->value("Redesign/collection/" + id).toMap();
     auto name = new QLineEdit(data.value("name").toString());
+    name->setObjectName("playlistName");
     name->setPlaceholderText("e.g., Favorite Videos");
     dialog->body->addWidget(new QLabel("Playlist Details"));
     dialog->body->addWidget(name);
@@ -1030,7 +1083,9 @@ void RedesignShell::newPlaylist(const QString &id)
             });
     dialog->body->addWidget(new QLabel("Select Files. Drag files into the box, or choose files below."));
     auto list = new FileList;
-    fileItems(list, id.isEmpty() ? queuePaths(THEPL) : data.value("paths").toStringList());
+    list->setObjectName("playlistFiles");
+    fileItems(list, id.isEmpty() ? (initialPaths.isEmpty() ? queuePaths(THEPL) : initialPaths)
+                                 : data.value("paths").toStringList());
     dialog->body->addWidget(list, 1);
     auto add = new QPushButton("Select Files");
     dialog->body->addWidget(add);
@@ -1043,6 +1098,7 @@ void RedesignShell::newPlaylist(const QString &id)
     connect(remove, &QPushButton::clicked, list, [list] { qDeleteAll(list->selectedItems()); });
     row->addStretch();
     auto cancel = new QPushButton("Cancel"), save = new QPushButton("Save");
+    save->setObjectName("playlistSave");
     row->addWidget(cancel);
     row->addWidget(save);
     dialog->body->addLayout(row);
@@ -1099,11 +1155,11 @@ void RedesignShell::batchTracks(const QStringList &supplied, int initialKind)
     paths = expanded;
     auto dialog = new Reframe::Dialog(window, "Add Tracks to Playlist / Folder", QSize(1048, 800));
     auto top = new QHBoxLayout;
-    auto kind = new QComboBox;
+    auto kind = new Reframe::Dropdown;
     kind->addItems(QStringList() << "Add Subtitles"
                                  << "Add Audio Tracks");
     kind->setCurrentIndex(initialKind);
-    auto origin = new QComboBox;
+    auto origin = new Reframe::Dropdown;
     origin->addItems(QStringList() << "From Computer"
                                    << "From OpenSubtitles"
                                    << "From Link");
@@ -1323,8 +1379,7 @@ void RedesignShell::runFirstRunSmoke(const QString &reportPath)
             auto privacy = window->findChild<QDialog *>("privacyDialog");
             if (!dialog || !dialog->isVisible() || (privacy && privacy->isVisible()) ||
                 QApplication::activeModalWidget() != dialog ||
-                config_GetInt(p_intf, "metadata-network-access") ||
-                config_GetInt(p_intf, "qt-privacy-ask"))
+                config_GetInt(p_intf, "metadata-network-access") || config_GetInt(p_intf, "qt-privacy-ask"))
             {
                 report("FAIL: Continue did not save the privacy choice and open onboarding alone");
                 return;
@@ -1491,8 +1546,8 @@ void RedesignShell::onboarding()
             auto cap = new QLabel(bindings[i]);
             cap->setObjectName("shortcutKeycap");
             cap->setAlignment(Qt::AlignCenter);
-                cap->setMinimumWidth(38);
-                cap->setFixedHeight(42);
+            cap->setMinimumWidth(38);
+            cap->setFixedHeight(42);
             layout->addWidget(cap);
         }
         column->addWidget(row);
@@ -1594,14 +1649,27 @@ void RedesignShell::toggleMiniPlayer()
     connect(pause, &QToolButton::clicked, THEAM, &ActionsManager::play);
     connect(restore, &QToolButton::clicked, this, [this] { toggleMiniPlayer(); });
     connect(queue, &QToolButton::clicked, this, [this] { showQueue(); });
-    connect(miniPlayer, &QObject::destroyed, this, [this] { miniPlayer = nullptr; });
+    const auto instance = miniPlayer;
+    connect(miniPlayer, &QObject::destroyed, this,
+            [this, instance]
+            {
+                if (miniPlayer == instance)
+                    miniPlayer = nullptr;
+            });
     Reframe::reveal(miniPlayer);
+    const QRect area = QApplication::desktop()->availableGeometry(window);
+    const QRect parent = window->frameGeometry().intersected(area);
+    const int right = parent.isEmpty() ? area.right() : parent.right();
+    const int bottom = parent.isEmpty() ? area.bottom() : parent.bottom();
+    miniPlayer->move(qMax(area.left(), right - miniPlayer->width() - 16),
+                     qMax(area.top(), bottom - miniPlayer->height() - 16));
 }
 void RedesignShell::layoutControls()
 {
-    const QStringList order =
-        getSettings()->value("Redesign/toolbar", Reframe::defaultToolbar()).toStringList();
-    appliedToolbar = order;
+    QStringList order = getSettings()->value("Redesign/toolbar", Reframe::defaultToolbar()).toStringList();
+    order.removeAll("fullscreen");
+    order << "fullscreen";
+    appliedToolbar = getSettings()->value("Redesign/toolbar", Reframe::defaultToolbar()).toStringList();
     const auto auxiliary = getSettings()->value("Redesign/leftControls").toStringList() +
                            getSettings()->value("Redesign/topControls").toStringList() +
                            getSettings()->value("Redesign/toolbar2").toStringList();
@@ -2144,6 +2212,26 @@ void RedesignShell::playerMenu(const QPoint &position)
 }
 bool RedesignShell::eventFilter(QObject *target, QEvent *event)
 {
+    if (target == window && event->type() == QEvent::WindowStateChange)
+    {
+        sidebar->setVisible(!window->isFullScreen() && !minimal);
+        showChrome();
+        if (auto grip = transport->findChild<QWidget *>("resizeGrip"))
+            grip->setVisible(!window->isFullScreen() && !window->isMaximized());
+    }
+    if ((event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride) &&
+        window->isFullScreen())
+    {
+        auto widget = qobject_cast<QWidget *>(target);
+        auto key = static_cast<QKeyEvent *>(event);
+        if (widget && widget->window() == window && key->key() == Qt::Key_Escape)
+        {
+            if (event->type() == QEvent::KeyPress)
+                leaveFullscreen();
+            key->accept();
+            return true;
+        }
+    }
     const bool videoSurface = qobject_cast<VideoWidget *>(target) || qobject_cast<BackgroundWidget *>(target);
     if (videoSurface &&
         (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
@@ -2178,7 +2266,7 @@ bool RedesignShell::eventFilter(QObject *target, QEvent *event)
         remainingTime = !remainingTime;
         return true;
     }
-    if (minimal && event->type() == QEvent::MouseMove)
+    if (chromeCanHide() && event->type() == QEvent::MouseMove)
     {
         const auto point = window->mapFromGlobal(QCursor::pos());
         if (point.y() < 80 || point.y() > window->height() - 100)
@@ -2198,8 +2286,34 @@ void RedesignShell::showChrome()
         Reframe::animateHeight(header, true, 300);
     if (!transport->isVisible())
         Reframe::animateHeight(transport, true, 300);
-    if (minimal || getSettings()->value("Redesign/autoHideControls").toString() == "Always")
+    if (chromeCanHide())
         chromeTimer->start(qMax(1000, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
+}
+bool RedesignShell::chromeCanHide() const
+{
+    const QString mode = getSettings()->value("Redesign/autoHideControls", "In fullscreen only").toString();
+    return minimal ||
+           (isPlayerVisible() && (mode == "Always" || (window->isFullScreen() && mode != "Never")));
+}
+void RedesignShell::leaveFullscreen()
+{
+    if (!property("windowReady").toBool())
+        return;
+    if (window->isFullScreen() || window->isInterfaceFullScreen() || var_GetBool(THEPL, "fullscreen"))
+    {
+        window->exitFullscreen();
+        showChrome();
+    }
+}
+void RedesignShell::toggleFullscreen()
+{
+    if (window->isFullScreen())
+        leaveFullscreen();
+    else
+    {
+        showPlayer();
+        window->toggleInterfaceFullScreen();
+    }
 }
 void RedesignShell::checkUpdates()
 {
@@ -2294,20 +2408,9 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
         {
             if (sidePanel)
                 sidePanel->hide();
-            openSettings(6);
-            if (auto preamp = settingsDialog->findChild<QSlider *>("preampSlider"))
-                for (auto scroll : settingsDialog->findChildren<QScrollArea *>())
-                    if (scroll->isVisible())
-                        scroll->ensureWidgetVisible(settingsDialog->findChild<QWidget *>("equalizerPanel"),
-                                                    20, 20);
-            settingsDialog->show();
             *next = nullptr;
             *check = nullptr;
-            report("PASS: elapsed time, pause, resume, seek, queue backend, 13 global settings pages, "
-                   "4 live panels, 3 track selectors, queue/chapters/bookmarks, mini player, "
-                   "customization, playlist/network/batch-track/3 onboarding/shortcut/profile/OpenSubtitles "
-                   "dialogs, "
-                   "equalizer persistence and live subtitle synchronization");
+            runInteractionSmoke(reportPath, report);
             return;
         }
         QTimer::singleShot(250, this, *check);
@@ -2443,6 +2546,338 @@ void RedesignShell::runFlowSmoke(const QString &reportPath, std::function<void(c
             dialog->close();
         ++*step;
         QTimer::singleShot(0, this, *next);
+    };
+    QTimer::singleShot(0, this, *next);
+}
+void RedesignShell::runInteractionSmoke(const QString &reportPath,
+                                        std::function<void(const QString &)> report)
+{
+    char *raw = var_InheritString(p_intf, "qt-redesign-smoke-library");
+    const QString directory = qfu(raw ? raw : "");
+    free(raw);
+    auto phase = std::make_shared<int>(0);
+    auto next = std::make_shared<std::function<void()>>();
+    auto expected = std::make_shared<QStringList>();
+    auto collection = std::make_shared<QString>();
+    auto initialQueue = std::make_shared<int>(queuePaths(THEPL).size());
+    auto popup = std::make_shared<QComboBox *>(nullptr);
+    auto fold = std::make_shared<QPushButton *>(nullptr);
+    auto fail = [next, report](const QString &reason)
+    {
+        *next = nullptr;
+        report("FAIL: " + reason);
+    };
+    *next = [this, reportPath, report, directory, phase, next, expected, collection, initialQueue, popup,
+             fold, fail]
+    {
+        int delay = 350;
+        if (*phase == 0)
+        {
+            if (QDir(directory).entryList(QStringList() << "*.ogg", QDir::Files).size() != 3)
+            {
+                fail("integration music directory must contain three generated Ogg tracks");
+                return;
+            }
+            if (settingsDialog)
+                settingsDialog->hide();
+            pages->setCurrentWidget(browser);
+            getSettings()->setValue("Redesign/MusicDirectory", directory);
+            showLibrary("Music");
+            delay = 1200;
+        }
+        else if (*phase == 1)
+        {
+            if (!files->isVisible() || files->count() != 3)
+            {
+                fail("generated Ogg tracks did not appear in the music library");
+                return;
+            }
+            files->selectAll();
+            for (auto item : files->selectedItems())
+                *expected << QUrl::fromUserInput(item->data(Qt::UserRole).toString(), QString(),
+                                                 QUrl::AssumeLocalFile)
+                                 .toString();
+            window->grab().save(reportPath + ".regression-selection.png");
+            // Trigger the real library context-menu action so its captured selection is tested.
+            QTimer::singleShot(50, this,
+                               [fail]
+                               {
+                                   auto menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                                   if (menu)
+                                       for (auto action : menu->actions())
+                                           if (action->menu() && action->text() == "Add to Playlist")
+                                               for (auto child : action->menu()->actions())
+                                                   if (child->text() == "New Playlist")
+                                                   {
+                                                       child->trigger();
+                                                       menu->close();
+                                                       return;
+                                                   }
+                                   if (menu)
+                                       menu->close();
+                                   fail("New Playlist context action was unavailable");
+                               });
+            contextMenu(files->visualItemRect(files->item(0)).center());
+        }
+        else if (*phase == 2)
+        {
+            auto dialog = window->findChild<QDialog *>("playlistEditor");
+            auto list = dialog ? dialog->findChild<QListWidget *>("playlistFiles") : nullptr;
+            if (!list || list->count() != expected->size() || list->count() != 3 ||
+                !list->visualItemRect(list->item(0)).isValid())
+            {
+                fail("New Playlist did not render the selected library files");
+                return;
+            }
+            for (int i = 0; i < list->count(); ++i)
+                if (!expected->contains(list->item(i)->data(Qt::UserRole).toString()))
+                {
+                    fail("New Playlist used queue contents instead of the library selection");
+                    return;
+                }
+            dialog->grab().save(reportPath + ".regression-selected-files.png");
+            dialog->findChild<QLineEdit *>("playlistName")->setText("Generated music selection");
+            dialog->findChild<QPushButton *>("playlistSave")->click();
+        }
+        else if (*phase == 3)
+        {
+            for (const auto &id : getSettings()->value("Redesign/collections").toStringList())
+            {
+                const auto data = getSettings()->value("Redesign/collection/" + id).toMap();
+                if (data.value("name").toString() == "Generated music selection")
+                {
+                    *collection = id;
+                    if (data.value("paths").toStringList() != *expected)
+                    {
+                        fail("saved playlist lost selected paths or added duplicates");
+                        return;
+                    }
+                }
+            }
+            if (collection->isEmpty())
+            {
+                fail("selected-file playlist was not saved");
+                return;
+            }
+            openMedia("collection:" + *collection);
+            delay = 1200;
+        }
+        else if (*phase == 4)
+        {
+            auto input = THEMIM->getInput();
+            if (!input || var_GetInteger(input, "state") != PLAYING_S ||
+                queuePaths(THEPL).size() != *initialQueue + 3)
+            {
+                fail("saved Ogg playlist did not start or appended an unexpected number of tracks");
+                return;
+            }
+            showQueue();
+        }
+        else if (*phase == 5)
+        {
+            auto list = sidePanel->findChild<QListWidget *>("queueItems");
+            if (!list || list->count() != *initialQueue + 3 ||
+                !list->visualItemRect(list->item(0)).isValid() ||
+                list->visualItemRect(list->item(0)).height() < 40)
+            {
+                fail("queue backend had tracks but the view did not lay out visible rows");
+                return;
+            }
+            sidePanel->grab().save(reportPath + ".regression-queue.png");
+            sidePanel->hide();
+            auto fullscreen = controlButtons.value("fullscreen");
+            if (!fullscreen || !transport->isAncestorOf(fullscreen) ||
+                fullscreen->mapTo(transport, QPoint()).x() < transport->width() / 2 || volume->height() < 28)
+            {
+                fail("fullscreen placement or volume wedge geometry");
+                return;
+            }
+            getSettings()->setValue("Redesign/autoHideControls", "In fullscreen only");
+            config_PutInt(p_intf, "mouse-hide-timeout", 500);
+            fullscreen->click();
+            QCursor::setPos(window->frameGeometry().center());
+            delay = 1600;
+        }
+        else if (*phase == 6)
+        {
+            if (!window->isFullScreen() || header->isVisible() || transport->isVisible())
+            {
+                fail("title and transport did not hide in interface fullscreen");
+                return;
+            }
+            QCursor::setPos(window->mapToGlobal(QPoint(window->width() / 2, 4)));
+            window->activateWindow();
+            delay = 500;
+        }
+        else if (*phase == 7)
+        {
+            if (!header->isVisible())
+            {
+                fail("fullscreen chrome did not reveal at the top edge");
+                return;
+            }
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QApplication::sendEvent(window, &escape);
+        }
+        else if (*phase == 8)
+        {
+            if (window->isFullScreen() || var_GetBool(THEPL, "fullscreen") || !transport->isVisible())
+            {
+                fail("Escape did not restore normal interface fullscreen state");
+                return;
+            }
+            openMedia(QDir(directory).filePath("generated-video.y4m"));
+            delay = 1200;
+        }
+        else if (*phase == 9)
+        {
+            auto output = THEMIM->getVout();
+            if (!output)
+            {
+                fail("generated video did not create a real video output");
+                return;
+            }
+            vlc_object_release(output);
+            toggleFullscreen();
+            QCursor::setPos(window->frameGeometry().center());
+            delay = 1600;
+        }
+        else if (*phase == 10)
+        {
+            auto output = THEMIM->getVout();
+            bool videoFullscreen = output && var_GetBool(output, "fullscreen");
+            if (output)
+                vlc_object_release(output);
+            if (!window->isFullScreen() || !videoFullscreen || header->isVisible() || transport->isVisible())
+            {
+                fail("video fullscreen state and chrome hiding were inconsistent");
+                return;
+            }
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QApplication::sendEvent(window, &escape);
+        }
+        else if (*phase == 11)
+        {
+            auto output = THEMIM->getVout();
+            bool videoFullscreen = output && var_GetBool(output, "fullscreen");
+            if (output)
+                vlc_object_release(output);
+            if (window->isFullScreen() || videoFullscreen || !transport->isVisible())
+            {
+                fail("Escape did not exit video fullscreen");
+                return;
+            }
+            toggleFullscreen();
+            showLibrary("Home");
+        }
+        else if (*phase == 12)
+        {
+            if (window->isFullScreen() || !miniPlayer || !miniPlayer->isVisible())
+            {
+                fail("library navigation did not leave fullscreen and open Now Playing");
+                return;
+            }
+            const QRect parent =
+                window->frameGeometry().intersected(QApplication::desktop()->availableGeometry(window));
+            if (std::abs(miniPlayer->geometry().right() - (parent.right() - 16)) > 2 ||
+                std::abs(miniPlayer->geometry().bottom() - (parent.bottom() - 16)) > 2 ||
+                !miniPlayer->findChild<QSizeGrip *>("dialogResizeGrip"))
+            {
+                fail("Now Playing did not start at the bottom right with a resize handle");
+                return;
+            }
+            miniPlayer->grab().save(reportPath + ".regression-mini-player.png");
+            showPlayer();
+            openSettings(0);
+        }
+        else if (*phase == 13)
+        {
+            for (auto combo : settingsDialog->findChildren<QComboBox *>())
+                if (combo->isVisible() && combo->count() > 1)
+                {
+                    *popup = combo;
+                    break;
+                }
+            if (!*popup || !settingsDialog->findChild<QSizeGrip *>("dialogResizeGrip"))
+            {
+                fail("settings dropdown or resize handle unavailable");
+                return;
+            }
+            (*popup)->showPopup();
+        }
+        else if (*phase == 14)
+        {
+            auto container = (*popup)->view()->window();
+            const QRect available = QApplication::desktop()->availableGeometry(*popup);
+            const QPoint below = (*popup)->mapToGlobal(QPoint(0, (*popup)->height() + 2));
+            if (!container->isVisible() || (below.y() + container->height() <= available.bottom() + 1 &&
+                                            std::abs(container->y() - below.y()) > 2))
+            {
+                fail("dropdown did not open immediately below its field");
+                return;
+            }
+            container->grab().save(reportPath + ".regression-dropdown.png");
+            (*popup)->hidePopup();
+            for (auto button : settingsDialog->findChildren<QPushButton *>("foldButton"))
+                if (button->isVisible() && button->text().contains("Advanced Options"))
+                {
+                    *fold = button;
+                    break;
+                }
+            if (!*fold)
+            {
+                fail("advanced options fold unavailable");
+                return;
+            }
+            (*fold)->click();
+            delay = 500;
+        }
+        else if (*phase == 15)
+        {
+            auto content = (*fold)->parentWidget()->findChild<QWidget *>("foldContent");
+            if (!content || !content->isVisible() || content->height() <= 0 || !(*fold)->isChecked())
+            {
+                fail("advanced fold did not expand after its transition");
+                return;
+            }
+            settingsDialog->grab().save(reportPath + ".regression-advanced.png");
+            (*fold)->click();
+            delay = 500;
+        }
+        else if (*phase == 16)
+        {
+            if ((*fold)->parentWidget()->findChild<QWidget *>("foldContent")->isVisible())
+            {
+                fail("advanced fold did not close after its transition");
+                return;
+            }
+            settingsDialog->hide();
+            THEMIM->stop();
+            showPlayer();
+            delay = 600;
+        }
+        else
+        {
+            window->grab().save(reportPath + ".regression-empty-player.png");
+            openSettings(6);
+            for (auto scroll : settingsDialog->findChildren<QScrollArea *>())
+                if (scroll->isVisible())
+                    scroll->ensureWidgetVisible(settingsDialog->findChild<QWidget *>("equalizerPanel"), 20,
+                                                20);
+            *next = nullptr;
+            report(
+                "PASS: playback pause/resume/seek, 13 settings pages, 22 panel/dialog flows, onboarding "
+                "layout "
+                "and selection, equalizer and subtitle timing; Ogg "
+                "library/context-selection/playlist/save/playback, "
+                "visible queue rows, volume/fullscreen control geometry, interface and video fullscreen "
+                "hide/reveal/Escape/navigation, bottom-right Now Playing, resize handles, anchored dropdown "
+                "and advanced fold transitions");
+            return;
+        }
+        ++*phase;
+        if (*next)
+            QTimer::singleShot(delay, this, *next);
     };
     QTimer::singleShot(0, this, *next);
 }

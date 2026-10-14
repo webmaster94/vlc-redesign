@@ -9,11 +9,15 @@
 #include <functional>
 #include <QIcon>
 #include <QToolButton>
+#include <QComboBox>
+#include <QFontComboBox>
 
 class QAbstractItemDelegate;
+class QSizeGrip;
 namespace Reframe
 {
 QAbstractItemDelegate *mediaDelegate(QObject *);
+QAbstractItemDelegate *choiceDelegate(QObject *);
 QStringList defaultToolbar();
 QIcon icon(const QString &, const QColor & = QColor("#8f8f8f"));
 QEasingCurve transitionCurve();
@@ -44,17 +48,38 @@ class Toggle : public QAbstractButton
 class Dialog : public QDialog
 {
     QPoint dragOffset;
+    QSizeGrip *grip;
 
   protected:
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void paintEvent(QPaintEvent *) override;
+    void resizeEvent(QResizeEvent *) override;
+    void showEvent(QShowEvent *) override;
 
   public:
     explicit Dialog(QWidget *parent, const QString &title, QSize size);
     QVBoxLayout *body;
     std::function<void()> beforeClose;
+};
+class Dropdown : public QComboBox
+{
+  public:
+    explicit Dropdown(QWidget *parent = nullptr) : QComboBox(parent)
+    {
+        setMaxVisibleItems(10);
+    }
+    void showPopup() override;
+};
+class FontDropdown : public QFontComboBox
+{
+  public:
+    explicit FontDropdown(QWidget *parent = nullptr) : QFontComboBox(parent)
+    {
+        setMaxVisibleItems(10);
+    }
+    void showPopup() override;
 };
 class ToolButton : public QToolButton
 {

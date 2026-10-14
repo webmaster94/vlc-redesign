@@ -55,7 +55,9 @@ class RedesignShell : public QWidget
     void showChrome();
     void openProperties();
     void batchTracks(const QStringList &paths = QStringList(), int kind = 0);
-    void newPlaylist(const QString &id = QString());
+    void newPlaylist(const QString &id = QString(), const QStringList &initialPaths = QStringList());
+    void leaveFullscreen();
+    void toggleFullscreen();
     void toggleMiniPlayer();
     void mainMenu(const QPoint &);
     void playerMenu(const QPoint &);
@@ -134,6 +136,7 @@ class RedesignShell : public QWidget
     void layoutControls();
     void updateQueue();
     void runFlowSmoke(const QString &, std::function<void(const QString &)>);
+    void runInteractionSmoke(const QString &, std::function<void(const QString &)>);
     void checkUpdates();
     void applyMediaBindings();
     void requestMetadata(const QString &);
@@ -144,6 +147,7 @@ class RedesignShell : public QWidget
     void populateAuxiliaryControls();
     void openSubtitles(QWidget *, QTableWidget *);
     void startAudioFocus();
+    bool chromeCanHide() const;
     bool eventFilter(QObject *, QEvent *) override;
 };
 #endif

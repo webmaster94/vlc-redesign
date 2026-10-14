@@ -69,9 +69,35 @@ if (-not $visual.WaitForExit(30000)) { $visual.Kill(); throw 'Waveform visualize
 if (-not (Test-Path -LiteralPath (Join-Path $visualRoot 'waveform.png'))) { throw 'Waveform visualizer did not render decoded audio' }
 Copy-Item -LiteralPath (Join-Path $visualRoot 'waveform.png') -Destination $Artifacts
 
+# Generated Ogg files exercise the library selection and saved-playlist path from the UI.
+$musicRoot = Join-Path $testRoot 'generated-music'
+New-Item -ItemType Directory -Path $musicRoot | Out-Null
+$ogg = Join-Path $musicRoot 'Tone 1 ñ測.ogg'
+$oggOutput = "#transcode{acodec=vorb,channels=1,samplerate=44100,ab=96}:std{access=file,mux=ogg,dst='$ogg'}"
+$encode = Start-Process -FilePath $app -ArgumentList @('--intf=dummy','--ignore-config','--no-one-instance','--play-and-exit',('--sout="' + $oggOutput + '"'),('"' + $wave + '"')) -PassThru -WindowStyle Hidden
+if (-not $encode.WaitForExit(30000)) { $encode.Kill(); throw 'Ogg fixture generation timed out' }
+if (-not (Test-Path -LiteralPath $ogg) -or (Get-Item -LiteralPath $ogg).Length -lt 1000) { throw 'Ogg fixture generation failed' }
+Copy-Item -LiteralPath $ogg -Destination (Join-Path $musicRoot 'Tone 2 ñ測.ogg')
+Copy-Item -LiteralPath $ogg -Destination (Join-Path $musicRoot 'Tone 3 ñ測.ogg')
+
+# A short synthetic YUV video exercises real video output and its fullscreen state.
+$video = Join-Path $musicRoot 'generated-video.y4m'
+$videoStream = [IO.File]::Create($video)
+$videoWriter = [IO.BinaryWriter]::new($videoStream)
+$videoWriter.Write([Text.Encoding]::ASCII.GetBytes("YUV4MPEG2 W160 H90 F10:1 Ip A1:1 C420jpeg`n"))
+$frame = [byte[]]::new(21600)
+for ($pixel = 0; $pixel -lt 14400; $pixel++) { $frame[$pixel] = [byte](50 + ($pixel % 160)) }
+for ($pixel = 14400; $pixel -lt 18000; $pixel++) { $frame[$pixel] = 100 }
+for ($pixel = 18000; $pixel -lt 21600; $pixel++) { $frame[$pixel] = 160 }
+for ($frameIndex = 0; $frameIndex -lt 150; $frameIndex++) {
+    $videoWriter.Write([Text.Encoding]::ASCII.GetBytes("FRAME`n"))
+    $videoWriter.Write($frame)
+}
+$videoWriter.Dispose()
+
 $controlReport = Join-Path $testRoot 'controls.txt'
-$controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--ignore-config','--no-qt-privacy-ask','--aout=dummy',"--qt-redesign-smoke=$controlReport",('"' + $wave + '"')) -PassThru -WindowStyle Hidden
-if (-not $controls.WaitForExit(60000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
+$controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--ignore-config','--no-qt-privacy-ask','--aout=dummy',"--qt-redesign-smoke=$controlReport", "--qt-redesign-smoke-library=$musicRoot",('"' + $wave + '"')) -PassThru -WindowStyle Hidden
+if (-not $controls.WaitForExit(90000)) { $controls.Kill(); throw 'Widget and playback integration checks timed out' }
 if (-not (Test-Path -LiteralPath $controlReport)) { throw 'Widget and playback integration report was not written' }
 $controlResult = Get-Content -LiteralPath $controlReport -Raw
 Copy-Item -LiteralPath $controlReport -Destination $Artifacts

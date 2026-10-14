@@ -41,6 +41,7 @@
 #include <QAction>
 #include <QWidgetAction>
 #include <QPainter>
+#include <QPainterPath>
 #include <QTimer>
 #include <QUrl>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -468,6 +469,36 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
     {
         /* we just want background autofill */
         QWidget::paintEvent( e );
+        return;
+    }
+    if (!THEMIM->getIM()->hasInput())
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const qreal size = qBound(64.0, qMin(width(), height()) * .38, 200.0);
+        painter.translate(width() / 2.0 - size / 2.0, height() / 2.0 - size / 2.0);
+        painter.scale(size / 100.0, size / 100.0);
+        const QColor accent(getSettings()->value("Redesign/accent", "#d37918").toString());
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 70));
+        painter.drawEllipse(QRectF(16, 82, 68, 10));
+        QPainterPath cone;
+        cone.moveTo(45, 11);
+        cone.quadTo(50, 5, 55, 11);
+        cone.lineTo(74, 75);
+        cone.quadTo(50, 86, 26, 75);
+        cone.closeSubpath();
+        painter.fillPath(cone, accent);
+        painter.setClipPath(cone);
+        painter.setBrush(QColor("#ececec"));
+        painter.drawRoundedRect(QRectF(25, 30, 50, 12), 2, 2);
+        painter.drawRoundedRect(QRectF(20, 55, 60, 14), 2, 2);
+        painter.setClipping(false);
+        painter.setBrush(accent.darker(110));
+        painter.drawRoundedRect(QRectF(18, 76, 64, 12), 4, 4);
+        painter.setPen(QPen(accent.lighter(120), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(cone);
         return;
     }
 

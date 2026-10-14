@@ -11,10 +11,42 @@
 #include <QTimer>
 #include <QApplication>
 #include <QDesktopWidget>
+#include <QSizeGrip>
+#include <QAbstractItemView>
+#include <QResizeEvent>
+#include <QShowEvent>
+#include <QStyledItemDelegate>
 #include <cmath>
 
 namespace Reframe
 {
+class ChoiceDelegate : public QStyledItemDelegate
+{
+  public:
+    explicit ChoiceDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
+    QSize sizeHint(const QStyleOptionViewItem &, const QModelIndex &) const override
+    {
+        return QSize(240, 44);
+    }
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        painter->save();
+        if (option.state & QStyle::State_Selected)
+            icon("check", option.palette.highlight().color())
+                .paint(painter, QRect(option.rect.left() + 8, option.rect.top() + 10, 24, 24));
+        painter->setPen(option.palette.text().color());
+        painter->setFont(option.font);
+        const QRect text = option.rect.adjusted(44, 0, -8, 0);
+        painter->drawText(
+            text, Qt::AlignVCenter | Qt::AlignLeft,
+            option.fontMetrics.elidedText(index.data().toString(), Qt::ElideRight, text.width()));
+        painter->restore();
+    }
+};
+QAbstractItemDelegate *choiceDelegate(QObject *parent)
+{
+    return new ChoiceDelegate(parent);
+}
 QStringList defaultToolbar()
 {
     return QStringList({"previous", "play", "next", "stop", "elapsed", "seek", "duration", "volume",
@@ -103,6 +135,9 @@ QWidget *fold(const QString &title, QWidget *content, QWidget *parent, bool expa
 {
     auto card = new QWidget(parent);
     card->setObjectName("settingsCard");
+    card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    content->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    content->setObjectName("foldContent");
     auto layout = new QVBoxLayout(card);
     layout->setContentsMargins(16, 6, 16, 16);
     layout->setSpacing(12);
@@ -111,17 +146,17 @@ QWidget *fold(const QString &title, QWidget *content, QWidget *parent, bool expa
     button->setChecked(expanded);
     button->setObjectName("foldButton");
     button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-    button->setText((expanded ? "Close " : "Open ") + title +
-                    QString::fromUtf8(expanded ? "  \xE2\x8C\x84" : "  \xE2\x8C\x83"));
+    button->setText((expanded ? "Hide " : "Show ") + title);
+    button->setIcon(icon(expanded ? "chevronup" : "chevrondown"));
     layout->addWidget(button);
     layout->addWidget(content);
     content->setVisible(expanded);
     QObject::connect(button, &QPushButton::toggled, card,
                      [button, content, title](bool on)
                      {
-                         button->setText((on ? "Close " : "Open ") + title +
-                                         QString::fromUtf8(on ? "  \xE2\x8C\x84" : "  \xE2\x8C\x83"));
-                         animateHeight(content, on, 208);
+                         button->setText((on ? "Hide " : "Show ") + title);
+                         button->setIcon(icon(on ? "chevronup" : "chevrondown"));
+                         animateHeight(content, on, 300);
                      });
     return card;
 }
@@ -176,10 +211,12 @@ void Toggle::paintEvent(QPaintEvent *)
     const auto accent = palette().highlight().color();
     p.setOpacity(isEnabled() ? 1 : .4);
     p.setPen(Qt::NoPen);
-    p.setBrush(palette().base());
+    p.setBrush(palette().button());
+    p.setPen(QPen(palette().mid().color(), 1));
     p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 5, 5);
     const qreal amount = isVisible() ? qBound(0.0, position, 1.0) : (isChecked() ? 1 : 0);
-    p.setBrush(isChecked() ? accent : QColor("#4b4b4b"));
+    p.setPen(Qt::NoPen);
+    p.setBrush(isChecked() ? accent : QColor("#666666"));
     p.drawRoundedRect(QRectF(3 + amount * 29, 3, 27, 26), 3, 3);
     p.setPen(isChecked() ? accent : palette().text().color());
     p.setFont(QFont(font().family(), 8));
@@ -191,7 +228,7 @@ void Toggle::paintEvent(QPaintEvent *)
         p.drawRoundedRect(rect().adjusted(1, 1, -2, -2), 5, 5);
     }
 }
-Dialog::Dialog(QWidget *parent, const QString &title, QSize size) : QDialog(parent)
+Dialog::Dialog(QWidget *parent, const QString &title, QSize size) : QDialog(parent), grip(nullptr)
 {
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_DeleteOnClose);
@@ -199,6 +236,10 @@ Dialog::Dialog(QWidget *parent, const QString &title, QSize size) : QDialog(pare
     setWindowTitle(title);
     resize(size);
     setObjectName("designDialog");
+    setMinimumSize(qMin(size.width(), 360), qMin(size.height(), 240));
+    grip = new QSizeGrip(this);
+    grip->setObjectName("dialogResizeGrip");
+    grip->setFixedSize(16, 16);
     auto root = new QVBoxLayout(this);
     root->setContentsMargins(16, 12, 16, 16);
     root->setSpacing(20);
@@ -241,9 +282,59 @@ void Dialog::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
+    if (isWindow())
+    {
+        for (int inset = 0; inset < 6; ++inset)
+        {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 0, 0, 8 + inset * 5));
+            p.drawRoundedRect(rect().adjusted(inset, inset + 2, -inset - 1, -inset - 1), 14, 14);
+        }
+    }
+    const QRect frame = isWindow() ? rect().adjusted(6, 6, -7, -7) : rect().adjusted(0, 0, -1, -1);
+    p.setPen(QPen(palette().window().color().lightness() < 128 ? QColor("#454545") : QColor("#b8b8b8"), 1));
     p.setBrush(palette().window());
-    p.drawRoundedRect(rect(), isWindow() ? 14 : 10, isWindow() ? 14 : 10);
+    p.drawRoundedRect(frame, isWindow() ? 12 : 6, isWindow() ? 12 : 6);
+}
+void Dialog::resizeEvent(QResizeEvent *event)
+{
+    QDialog::resizeEvent(event);
+    if (grip)
+    {
+        grip->move(width() - 26, height() - 26);
+        grip->raise();
+    }
+}
+void Dialog::showEvent(QShowEvent *event)
+{
+    QDialog::showEvent(event);
+    grip->setVisible(isWindow());
+    grip->raise();
+}
+static void anchorDropdown(QComboBox *combo)
+{
+    QWidget *popup = combo->view()->window();
+    if (!popup->isVisible() || popup == combo->window())
+        return;
+    popup->setMinimumWidth(combo->width());
+    const QRect available = QApplication::desktop()->availableGeometry(combo);
+    const QPoint below = combo->mapToGlobal(QPoint(0, combo->height() + 2));
+    QPoint position = below;
+    if (position.y() + popup->height() > available.bottom() + 1)
+        position.setY(combo->mapToGlobal(QPoint()).y() - popup->height() - 2);
+    position.setX(qBound(available.left(), position.x(), available.right() - popup->width() + 1));
+    position.setY(qMax(available.top(), position.y()));
+    popup->move(position);
+}
+void Dropdown::showPopup()
+{
+    QComboBox::showPopup();
+    anchorDropdown(this);
+}
+void FontDropdown::showPopup()
+{
+    QFontComboBox::showPopup();
+    anchorDropdown(this);
 }
 ToolButton::ToolButton(QWidget *parent) : QToolButton(parent), hover(this), amount(0)
 {

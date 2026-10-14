@@ -170,7 +170,7 @@ RedesignPreferences::RedesignPreferences(intf_thread_t *intf, MainInterface *mai
     if (!local)
     {
         auto root = static_cast<QVBoxLayout *>(layout());
-        root->setContentsMargins(8, 8, 8, 8);
+        root->setContentsMargins(14, 14, 14, 14);
         auto header = static_cast<QHBoxLayout *>(root->itemAt(0)->layout());
         filter->setFixedWidth(208);
         header->insertWidget(0, filter);
@@ -900,7 +900,7 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
     }
     if (key == "ui:visualizer")
     {
-        auto combo = new QComboBox(parent);
+        auto combo = new Reframe::Dropdown(parent);
         combo->addItem("Disabled", "");
         if (module_exists("visual"))
         {
@@ -917,7 +917,7 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
     }
     if (key == "ui:autoHideControls" || key == "ui:singleClick" || key == "ui:doubleClick")
     {
-        auto combo = new QComboBox(parent);
+        auto combo = new Reframe::Dropdown(parent);
         combo->addItems(key == "ui:autoHideControls"
                             ? QStringList({"Never", "In fullscreen only", "Always"})
                             : QStringList({"None", "Play / Pause", "Toggle fullscreen"}));
@@ -972,7 +972,7 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
     }
     if (key == "freetype-font" || key == "freetype-monofont")
     {
-        auto combo = new QFontComboBox(parent);
+        auto combo = new Reframe::FontDropdown(parent);
         combo->setCurrentFont(QFont(value.toString()));
         connect(combo, &QFontComboBox::currentFontChanged, this,
                 [this, key](const QFont &font) { write(key, font.family()); });
@@ -1015,7 +1015,7 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
     }
     if (local && (key == "sub-track" || key == "audio-track"))
     {
-        auto combo = new QComboBox(parent);
+        auto combo = new Reframe::Dropdown(parent);
         combo->setObjectName(key);
         auto update = [this, key, combo]
         {
@@ -1083,7 +1083,7 @@ QWidget *RedesignPreferences::option(const QString &key, QWidget *parent)
         }
         if (!labels.isEmpty())
         {
-            auto combo = new QComboBox(parent);
+            auto combo = new Reframe::Dropdown(parent);
             for (int i = 0; i < labels.size(); ++i)
                 combo->addItem(labels[i], values[i]);
             combo->setCurrentIndex(qMax(0, combo->findData(value)));
@@ -1461,7 +1461,7 @@ QWidget *RedesignPreferences::videoEffects()
     auto layout = new QVBoxLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(20);
-    auto categories = new QComboBox;
+    auto categories = new Reframe::Dropdown;
     categories->addItems(QStringList() << "Essential"
                                        << "Crop"
                                        << "Colors"
@@ -1547,7 +1547,7 @@ QWidget *RedesignPreferences::advanced(int page)
     auto search = new QLineEdit;
     search->setPlaceholderText("Search all options");
     layout->addWidget(search);
-    auto modules = new QComboBox;
+    auto modules = new Reframe::Dropdown;
     layout->addWidget(modules);
     auto controls = new QWidget;
     auto fields = new QVBoxLayout(controls);
@@ -1611,7 +1611,7 @@ QWidget *RedesignPreferences::advanced(int page)
 }
 void RedesignPreferences::preset(QVBoxLayout *layout)
 {
-    auto preset = new QComboBox;
+    auto preset = new Reframe::Dropdown;
     preset->addItem("Default Preset");
     preset->addItems(getSettings()->value("Redesign/profileNames").toStringList());
     row(layout, "Setting preset", preset);
@@ -2068,8 +2068,8 @@ QWidget *RedesignPreferences::buildPage(int page)
         layout->addWidget(videoEffects());
         heading(layout, "Defaults");
         options(layout, "Rotate=rotate-angle");
-        auto horizontal = new QComboBox;
-        auto vertical = new QComboBox;
+        auto horizontal = new Reframe::Dropdown;
+        auto vertical = new Reframe::Dropdown;
         horizontal->addItems(QStringList({"None", "Flip"}));
         vertical->addItems(QStringList({"None", "Flip"}));
         char *raw = var_GetString(THEPL, "video-filter");
@@ -2166,7 +2166,7 @@ QWidget *RedesignPreferences::buildPage(int page)
     {
         if (!local)
             options(layout, "#Output|Enable audio=audio");
-        auto devices = new QComboBox;
+        auto devices = new Reframe::Dropdown;
         devices->addItem("System default", QString());
         auto aout = THEMIM->getAout();
         if (aout)

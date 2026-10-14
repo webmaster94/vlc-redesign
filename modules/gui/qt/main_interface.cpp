@@ -1178,8 +1178,7 @@ void MainInterface::dockPlaylist( bool p_docked )
  */
 void MainInterface::displayNormalView()
 {
-    if( redesignShell ) redesignShell->setMinimal(
-        getSettings()->value("Redesign/autoHideControls", "In fullscreen only").toString() != "Never" );
+    if( redesignShell ) redesignShell->showChrome();
     menuBar()->setVisible( false );
     controls->setVisible( false );
 #ifndef QT_NO_STATUSBAR
@@ -1726,6 +1725,11 @@ void MainInterface::keyPressEvent( QKeyEvent *e )
 
 void MainInterface::handleKeyPress( QKeyEvent *e )
 {
+    if (e->key() == Qt::Key_Print)
+    {
+        e->ignore();
+        return;
+    }
     if( ( ( e->modifiers() & Qt::ControlModifier ) && ( e->key() == Qt::Key_H ) ) ||
         ( b_minimalView && !b_videoFullScreen && e->key() == Qt::Key_Escape ) )
     {
@@ -1801,10 +1805,36 @@ void MainInterface::setInterfaceFullScreen( bool fs )
 }
 void MainInterface::toggleInterfaceFullScreen()
 {
-    b_interfaceFullScreen = !b_interfaceFullScreen;
-    if( !b_videoFullScreen )
-        setInterfaceFullScreen( b_interfaceFullScreen );
-    emit fullscreenInterfaceToggled( b_interfaceFullScreen );
+    if (isFullScreen() || b_interfaceFullScreen || b_videoFullScreen)
+    {
+        exitFullscreen();
+        return;
+    }
+    b_interfaceFullScreen = true;
+    setInterfaceFullScreen(true);
+    var_SetBool(THEPL, "fullscreen", true);
+    if (auto output = THEMIM->getVout())
+    {
+        var_SetBool(output, "fullscreen", true);
+        vlc_object_release(output);
+    }
+    emit fullscreenInterfaceToggled(true);
+}
+void MainInterface::exitFullscreen()
+{
+    b_interfaceFullScreen = false;
+    var_SetBool(THEPL, "fullscreen", false);
+    if (auto output = THEMIM->getVout())
+    {
+        var_SetBool(output, "fullscreen", false);
+        vlc_object_release(output);
+    }
+    if (b_videoFullScreen)
+        setVideoFullScreen(false);
+    else
+        setInterfaceFullScreen(false);
+    setMinimalView(b_minimalView);
+    emit fullscreenInterfaceToggled(false);
 }
 
 void MainInterface::emitBoss()

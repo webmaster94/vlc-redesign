@@ -274,6 +274,10 @@ vlc_module_begin ()
                 "Opt-in privacy ordering, placement and consent persistence checks", true )
         change_volatile()
         change_private()
+    add_string( "qt-redesign-smoke-library", "", "Reframe generated media fixtures",
+                "Directory of generated Ogg and video fixtures for opt-in integration checks", true )
+        change_volatile()
+        change_private()
 
 #ifdef UPDATE_CHECK
     add_bool( "qt-updates-notif", true, UPDATER_TEXT,

@@ -488,7 +488,7 @@ void RedesignShell::contextMenu(const QPoint &position)
                                  getSettings()->setValue("Redesign/collection/" + id, data);
                              });
     }
-    playlists->addAction("New Playlist", this, [this] { newPlaylist(); });
+    playlists->addAction("New Playlist", this, [this, urls] { newPlaylist(QString(), urls); });
     menu.addAction("Properties & Metadata", this, [this, path] { mediaProperties(path); });
     menu.addAction(folder ? "Edit Subtitle Tracks" : "Add Subtitle Tracks", this,
                    [this, targets] { batchTracks(targets, 0); });

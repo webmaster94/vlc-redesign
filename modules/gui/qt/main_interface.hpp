@@ -211,6 +211,7 @@ public slots:
     void hideUpdateSystrayMenu();
     void toggleAdvancedButtons();
     void toggleInterfaceFullScreen();
+    void exitFullscreen();
     void toggleFSC();
     void setInterfaceAlwaysOnTop( bool );
 

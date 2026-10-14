@@ -2,6 +2,8 @@
 
 Audited 12 October 2026. This is a behavior inventory, not a declaration that the implementation is complete.
 
+User feedback on 13 October adds explicit requirements: privacy precedes onboarding and is centered; appearance controls sit left of the preview with marked accent selection; shortcuts use spaced icon/keycap rows; volume uses a rounded gradient wedge with a stable height; selected library art receives a translucent tint; new playlists take the library selection; queue rows remain visible after updates; fullscreen chrome hides and reveals at the edges, Escape exits both fullscreen states, and library navigation restores a normal window. Fullscreen belongs at the bottom right. Now Playing starts at the bottom right, dialogs have borders and resize grips, dropdowns anchor below their fields, and advanced folds use a smooth 300 ms transition. An original traffic-cone illustration follows the selected accent in the empty player. The direct audio picker uses checked track and output-device rows with a Preferences link.
+
 ## Evidence and method
 
 The primary design is [VLC Redesign by Juxtopposed](https://www.figma.com/community/file/1691465999134370980/vlc-redesign), licensed CC BY 4.0. The local decoded `.fig` document is `vlc-redesign-research/decoded-design.json`, 12,563 nodes. This inventory traverses parent GUIDs and includes instance `symbolData.symbolOverrides.textData.characters`, because a text-only traversal misses menu labels and reused controls. GUIDs below identify the exact source nodes. Variant duplicates are grouped; sample show titles and album art are content examples, not required bundled media.
