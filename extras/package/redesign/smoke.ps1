@@ -102,8 +102,16 @@ if ($PrintReceiver) {
     $printLog = Join-Path $testRoot 'printscreen.txt'
     $printProbe = Start-Process -FilePath $PrintReceiver -WindowStyle Hidden -PassThru -RedirectStandardOutput $printLog -RedirectStandardError ($printLog + '.errors')
     $readyUntil = [DateTime]::UtcNow.AddSeconds(5)
-    while ([DateTime]::UtcNow -lt $readyUntil -and (-not (Test-Path -LiteralPath $printLog) -or -not ([string](Get-Content -LiteralPath $printLog -Raw)).Contains('READY:'))) { Start-Sleep -Milliseconds 50 }
-    if (-not (Test-Path -LiteralPath $printLog) -or -not ([string](Get-Content -LiteralPath $printLog -Raw)).Contains('READY:')) { $printProbe.Kill(); throw 'External PrintScreen receiver did not register its hotkey' }
+    $receiverReady = $false
+    while ([DateTime]::UtcNow -lt $readyUntil) {
+        if (Test-Path -LiteralPath $printLog) {
+            $receiverText = Get-Content -LiteralPath $printLog -Raw
+            if (-not [string]::IsNullOrEmpty($receiverText) -and $receiverText -match 'READY:') { $receiverReady = $true; break }
+        }
+        if ($printProbe.HasExited) { break }
+        Start-Sleep -Milliseconds 50
+    }
+    if (-not $receiverReady) { if (-not $printProbe.HasExited) { $printProbe.Kill() }; throw 'External PrintScreen receiver did not register its hotkey' }
     $env:REFRAME_PRINT_PROBE = '1'
 }
 $controls = Start-Process -FilePath $app -ArgumentList @('--no-one-instance','--ignore-config','--no-qt-privacy-ask','--aout=dummy',"--qt-redesign-smoke=$controlReport", "--qt-redesign-smoke-library=$musicRoot",('"' + $wave + '"')) -PassThru -WindowStyle Hidden

@@ -12,6 +12,7 @@
 #include <QPropertyAnimation>
 #include <QSettings>
 #include <QTimer>
+#include <QDateTime>
 #include <vlc_configuration.h>
 
 namespace
@@ -70,6 +71,7 @@ QToolButton *RedesignShell::chromePin(QWidget *widget, const QString &key)
     pin->setProperty("chromePin", true);
     pin->setObjectName(key + "Pin");
     const QString setting = "Redesign/" + key;
+    pin->setProperty("pinSetting", setting);
     pin->setChecked(getSettings()->value(setting, false).toBool());
     widget->setProperty("chromePinned", pin->isChecked());
     auto changed = [this, widget, pin, setting](bool checked)
@@ -80,6 +82,8 @@ QToolButton *RedesignShell::chromePin(QWidget *widget, const QString &key)
         pin->setAccessibleName(pin->toolTip());
         pin->setIcon(
             Reframe::icon("pin", checked ? palette().highlight().color() : palette().text().color()));
+        if (checked && (widget != sidePanel || widget->property("chromeWasOpen").toBool()))
+            visibleChrome(widget, true, widget == sidePanel || widget == sidebar);
     };
     changed(pin->isChecked());
     connect(pin, &QToolButton::toggled, widget, changed);
@@ -128,6 +132,17 @@ void RedesignShell::updateChromePointer()
     const bool full = window->isFullScreen() || minimal;
     const bool overTransport = containsPointer(transport, global);
     const bool overHeader = containsPointer(header, global);
+    if (sidePanel && sidePanel->property("chromeWasOpen").toBool() &&
+        property("panelGraceUntil").toLongLong() > QDateTime::currentMSecsSinceEpoch() &&
+        !containsPointer(sidePanel, global))
+    {
+        visibleChrome(sidePanel, true, true);
+        if (overTransport)
+            visibleChrome(transport, true);
+        return;
+    }
+    if (containsPointer(sidePanel, global))
+        setProperty("panelGraceUntil", 0);
     const bool right = !overTransport && !overHeader && sidePanel &&
                        sidePanel->property("chromeWasOpen").toBool() &&
                        (containsPointer(sidePanel, global) ||
@@ -162,4 +177,14 @@ void RedesignShell::positionResumePrompt()
     prompt->resize(width, 52);
     prompt->move((player->width() - width) / 2, qMax(0, player->height() - 76));
     prompt->raise();
+}
+void RedesignShell::showSidePanel()
+{
+    if (!sidePanel)
+        return;
+    sidePanel->setProperty("chromeWasOpen", true);
+    setProperty("panelGraceUntil", QDateTime::currentMSecsSinceEpoch() + 1200);
+    visibleChrome(sidePanel, true, true);
+    if (chromeCanHide())
+        chromeTimer->start(qMax(1200, int(config_GetInt(p_intf, "mouse-hide-timeout"))));
 }

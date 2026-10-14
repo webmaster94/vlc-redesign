@@ -162,6 +162,7 @@ class RedesignShell : public QWidget
     void applyLibraryView(bool listMode);
     void updateChromePointer();
     void hideChrome();
+    void showSidePanel();
     void positionResumePrompt();
     QToolButton *chromePin(QWidget *, const QString &key);
     void mediaProperties(const QString &);

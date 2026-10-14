@@ -349,7 +349,7 @@ void RedesignShell::openMediaSettings(int page)
             sidePanel->setProperty("chromeWasOpen", true);
             sidePanel->setProperty("chromeTarget", true);
             sidePanel->setFixedWidth(400);
-            sidePanel->show();
+            showSidePanel();
             return;
         }
         bodyLayout->removeWidget(sidePanel);
@@ -384,8 +384,7 @@ void RedesignShell::openMediaSettings(int page)
                 prefs->setProperty("chromeWasOpen", false);
                 prefs->hide();
             });
-    prefs->show();
-    Reframe::animateWidth(prefs, 400, 104);
+    showSidePanel();
 }
 void RedesignShell::openTracks(int selected)
 {
@@ -613,8 +612,7 @@ void RedesignShell::openTracks(int selected)
     }
     stack->setCurrentIndex(selected - 5);
     bodyLayout->addWidget(panel);
-    panel->show();
-    Reframe::animateWidth(panel, 360, 104);
+    showSidePanel();
 }
 void RedesignShell::applyMediaBindings()
 {
@@ -760,7 +758,7 @@ void RedesignShell::showQueue(int selected)
         for (auto button : sidePanel->findChild<QWidget *>("queueSelectors")->findChildren<QPushButton *>())
             button->setChecked(button->text() ==
                                QStringList({"Queue", "Chapters", "Bookmarks"}).value(selected));
-        sidePanel->show();
+        showSidePanel();
         return;
     }
     if (sidePanel)
@@ -929,9 +927,8 @@ void RedesignShell::showQueue(int selected)
     timer->start();
     stack->setCurrentIndex(selected);
     bodyLayout->addWidget(sidePanel);
-    sidePanel->show();
+    showSidePanel();
     updateQueue();
-    Reframe::animateWidth(sidePanel, 360, 208);
 }
 bool RedesignShell::isQueueVisible() const
 {
@@ -940,7 +937,10 @@ bool RedesignShell::isQueueVisible() const
 void RedesignShell::toggleQueue()
 {
     if (isQueueVisible())
+    {
+        sidePanel->setProperty("chromeWasOpen", false);
         sidePanel->hide();
+    }
     else
         showQueue();
 }

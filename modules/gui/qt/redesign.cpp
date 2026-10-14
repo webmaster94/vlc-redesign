@@ -1327,6 +1327,8 @@ void RedesignShell::applyTheme()
     qApp->setStyleSheet(css);
     for (QToolButton *b : findChildren<QToolButton *>())
     {
+        if (b->property("chromePin").toBool())
+            b->setChecked(getSettings()->value(b->property("pinSetting").toString(), false).toBool());
         QString glyph = b->property("glyph").toString();
         if (!glyph.isEmpty())
             b->setIcon(lineIcon(glyph, QColor(b == playButton                      ? "#111111"
@@ -1398,7 +1400,10 @@ void RedesignShell::setMinimal(bool m)
     sidebar->setVisible(!m);
     Reframe::animateHeight(transport, !m, 300);
     if (sidePanel)
+    {
+        sidePanel->setProperty("chromeWasOpen", false);
         sidePanel->hide();
+    }
     if (libraryDock)
         libraryDock->hide();
     if (extraToolbar)

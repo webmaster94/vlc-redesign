@@ -437,7 +437,7 @@ void RedesignShell::runFeedbackSmoke(const QString &path, std::function<void(con
                 return;
             }
         }
-        else
+        else if (*phase == 20)
         {
             auto output = THEMIM->getAout();
             char *value = output ? var_GetString(output, "visual") : nullptr;
@@ -450,6 +450,26 @@ void RedesignShell::runFeedbackSmoke(const QString &path, std::function<void(con
                 fail("closing visualization did not disable it while audio kept playing");
                 return;
             }
+            if (!window->isFullScreen())
+                toggleFullscreen();
+            showChrome();
+            if (sidePanel)
+            {
+                sidePanel->setProperty("chromeWasOpen", false);
+                sidePanel->hide();
+            }
+            QCursor::setPos(transport->mapToGlobal(transport->rect().center()));
+            controlButtons.value("settings")->click();
+            delay = 350;
+        }
+        else
+        {
+            if (!sidePanel || !sidePanel->isVisible())
+            {
+                fail("panel opened from the controls hid before the pointer could reach it");
+                return;
+            }
+            leaveFullscreen();
             *next = nullptr;
             report("PASS: existing playback/library/installer checks; music fallback and automatic audio "
                    "waveform; Home list/tiles; mini play/pause synchronization; bottom-centered resume "

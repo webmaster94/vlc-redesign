@@ -240,8 +240,13 @@ void RedesignSeek::mouseMoveEvent(QMouseEvent *e)
         QPoint(qBound(0, e->pos().x() - preview->width() / 2, qMax(0, width() - preview->width())),
                -preview->height() - 12)));
     preview->show();
-    if (getSettings()->value("Redesign/seekThumbnails", true).toBool())
+    const bool video = !ReframeSeekData::audioMediaName(media) && THEMIM->getIM()->hasVideo() &&
+                       getSettings()->value("Redesign/seekThumbnails", true).toBool();
+    image->setVisible(video);
+    if (video)
         debounce.start();
+    else
+        debounce.stop();
 }
 void RedesignSeek::leaveEvent(QEvent *e)
 {
@@ -251,7 +256,8 @@ void RedesignSeek::leaveEvent(QEvent *e)
 }
 void RedesignSeek::thumbnail()
 {
-    if (!ReframeSeekData::workerMediaAllowed(media) || !preview->isVisible())
+    if (!ReframeSeekData::workerMediaAllowed(media) || ReframeSeekData::audioMediaName(media) ||
+        !THEMIM->getIM()->hasVideo() || !preview->isVisible())
         return;
     const QString token = QString::fromLatin1(
         QCryptographicHash::hash((media + QString::number(hoverTime)).toUtf8(), QCryptographicHash::Sha256)
