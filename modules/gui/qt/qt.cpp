@@ -715,13 +715,12 @@ static void *ThreadPlatform( void *obj, char *platform_name )
     msg_Dbg( p_intf, "QApp exec() finished" );
     if (p_mi != NULL)
     {
+        QMutexLocker locker (&lock);
+        active = false;
         var_Destroy( THEPL, "window" );
         var_Destroy( THEPL, "qt4-iface" );
         var_Destroy( p_intf->obj.libvlc, "window" );
         var_Destroy( p_intf->obj.libvlc, "qt4-iface" );
-
-        QMutexLocker locker (&lock);
-        active = false;
 
         p_sys->p_mi = NULL;
         /* Destroy first the main interface because it is connected to some
@@ -801,6 +800,11 @@ static int WindowOpen( vout_window_t *p_wnd, const vout_window_cfg_t *cfg )
         return VLC_EGENERIC;
     }
 
+    QMutexLocker locker (&lock);
+    if (unlikely(!active) ||
+        p_intf != var_InheritAddress(p_wnd, "qt4-iface"))
+        return VLC_EGENERIC;
+
     if( cfg->type != VOUT_WINDOW_TYPE_INVALID
      && cfg->type != p_intf->p_sys->voutWindowType )
         return VLC_EGENERIC;
@@ -812,10 +816,6 @@ static int WindowOpen( vout_window_t *p_wnd, const vout_window_cfg_t *cfg )
                 return VLC_EGENERIC;
             break;
     }
-
-    QMutexLocker locker (&lock);
-    if (unlikely(!active))
-        return VLC_EGENERIC;
 
     vout_window_qt_t *sys = new vout_window_qt_t;
 

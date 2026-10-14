@@ -234,14 +234,23 @@ void RedesignShell::runFeedbackSmoke(const QString &path, std::function<void(con
             toggleFullscreen();
             window->activateWindow();
             window->raise();
-            QCursor::setPos(sidePanel->mapToGlobal(sidePanel->rect().center()));
-            updateChromePointer();
+            // Fullscreen changes native window geometry asynchronously on Windows.
+            // Move into the panel after that change, then allow its hide animations to finish.
+            QTimer::singleShot(200, this, [this]
+            {
+                QCursor::setPos(sidePanel->mapToGlobal(sidePanel->rect().center()));
+                updateChromePointer();
+            });
+            delay = 800;
         }
         else if (*phase == 8)
         {
             if (!sidePanel->isVisible() || transport->isVisible())
             {
-                fail("hovered sidebar did not take priority over playback controls");
+                window->grab().save(path + ".feedback-sidebar-failure.png");
+                fail(QString("hovered sidebar did not take priority over playback controls (region %1, active %2, fullscreen %3, panel %4, transport %5)")
+                     .arg(property("chromeRegion").toInt()).arg(window->isActiveWindow())
+                     .arg(window->isFullScreen()).arg(sidePanel->isVisible()).arg(transport->isVisible()));
                 return;
             }
             auto pin = sidePanel->findChild<QToolButton *>("pinPanelPin");

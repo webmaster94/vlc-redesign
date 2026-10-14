@@ -676,6 +676,7 @@ RedesignShell::RedesignShell(intf_thread_t *intf, MainInterface *w, QWidget *pan
       systemPalette(QApplication::palette()), thumbnailProcess(nullptr), compact(false), minimal(false)
 {
     navigationAnimation = nullptr;
+    sidebar = nullptr;
     sidePanel = nullptr;
     libraryDock = nullptr;
     miniPlayer = nullptr;

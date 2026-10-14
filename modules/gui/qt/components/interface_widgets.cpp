@@ -514,8 +514,17 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
         setAccessibleDescription("Audio track with no album artwork");
         const int size = qBound(64, qMin(width(), height()) / 3, 192);
         const QColor accent(getSettings()->value("Redesign/accent", "#d37918").toString());
-        Reframe::icon("music", accent).paint(&painter,
-            QRect((width() - size) / 2, (height() - size) / 2, size, size));
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.translate((width() - size) / 2, (height() - size) / 2);
+        painter.scale(size / 100.0, size / 100.0);
+        painter.setPen(QPen(accent, 4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawLine(QPointF(38, 73), QPointF(38, 24));
+        painter.drawLine(QPointF(38, 24), QPointF(74, 15));
+        painter.drawLine(QPointF(74, 15), QPointF(74, 64));
+        painter.drawLine(QPointF(38, 34), QPointF(74, 25));
+        painter.drawEllipse(QRectF(18, 68, 20, 16));
+        painter.drawEllipse(QRectF(54, 59, 20, 16));
         return;
     }
 
