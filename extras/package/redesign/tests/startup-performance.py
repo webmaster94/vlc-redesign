@@ -31,6 +31,11 @@ def main():
             output.setparams((1, 2, 8000, 0, "NONE", "not compressed"))
             output.writeframes(b"".join(struct.pack("<h", int(math.sin(i * math.tau * 440 / 8000) * 8000))
                                        for i in range(8000 * 5)))
+    video = root / "startup-video.y4m"
+    with video.open("wb") as output:
+        output.write(b"YUV4MPEG2 W160 H90 F10:1 Ip A1:1 C420jpeg\n")
+        for frame in range(50):
+            output.write(b"FRAME\n" + bytes([80 + frame]) * 14400 + bytes([128]) * 7200)
     base = [str(app), "--ignore-config", "--no-qt-privacy-ask", "--aout=dummy", "--verbose=2"]
     rows = []
 
@@ -54,21 +59,22 @@ def main():
         print(f"PASS: {name}: {seconds:.3f} s to playback progress", flush=True)
         (root / "startup-results.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
-    for mode in ("first-launch", "repeat-launch", "existing-instance"):
+    for mode in ("first-launch", "video-launch", "repeat-launch", "existing-instance"):
         if mode == "existing-instance" and not args.ipc:
             continue
         report = root / (mode + ".jsonl")
         report.unlink(missing_ok=True)
+        media = video if mode == "video-launch" else fixtures[0]
         flags = ["--no-one-instance"] if mode != "existing-instance" else [
             "--one-instance", "--one-instance-when-started-from-file", "--started-from-file"]
         log = root / (mode + ".log")
         with log.open("wb") as output:
             start = time.perf_counter()
             process = subprocess.Popen(base + flags + ["--play-and-exit",
-                "--qt-redesign-startup-probe=" + str(report), str(fixtures[0])],
+                "--qt-redesign-startup-probe=" + str(report), str(media)],
                 stdout=output, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
             try:
-                elapsed = ready(process, report, fixtures[0].name, start)
+                elapsed = ready(process, report, media.name, start)
                 if mode != "existing-instance":
                     record(mode, elapsed)
                 else:
