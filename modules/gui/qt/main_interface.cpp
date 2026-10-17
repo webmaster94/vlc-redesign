@@ -77,6 +77,10 @@
 #endif
 
 #include <QTimer>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <memory>
 
 #include <vlc_actions.h>                    /* Wheel event */
 #include <vlc_vout_display.h>               /* vout_thread_t and VOUT_ events */
@@ -292,6 +296,32 @@ MainInterface::MainInterface( intf_thread_t *_p_intf ) : QVLCMW( _p_intf )
         } );
     }
     free( preview );
+    char *startupProbe = var_InheritString(p_intf, "qt-redesign-startup-probe");
+    if (startupProbe && *startupProbe)
+    {
+        const QString destination = qfu(startupProbe);
+        auto reported = std::make_shared<QString>();
+        connect(THEMIM->getIM(), &InputManager::positionUpdated, this,
+                [this, destination, reported](float, int64_t time, int)
+                {
+                    if (time <= 0 || !isVisible() || THEMIM->getIM()->playingStatus() != PLAYING_S)
+                        return;
+                    auto item = THEMIM->currentInputItem();
+                    char *raw = item ? input_item_GetURI(item) : nullptr;
+                    const QString uri = qfu(raw ? raw : "");
+                    free(raw);
+                    if (uri.isEmpty() || uri == *reported)
+                        return;
+                    QFile output(destination);
+                    if (output.open(QIODevice::WriteOnly | QIODevice::Append))
+                    {
+                        const QJsonObject event{{"uri", uri}, {"time_us", double(time)}};
+                        output.write(QJsonDocument(event).toJson(QJsonDocument::Compact) + '\n');
+                        *reported = uri;
+                    }
+                });
+    }
+    free(startupProbe);
     char *smoke = var_InheritString( p_intf, "qt-redesign-smoke" );
     if( smoke && *smoke )
     {

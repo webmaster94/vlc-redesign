@@ -203,7 +203,7 @@ void request(QObject *owner, const QUrl &url, const QString &key, const QString 
                              "--max-filesize",
                              "10485760",
                              "--user-agent",
-                             "Reframe v0.5.0",
+                             "Reframe v0.6.0",
                              "--write-out",
                              "\n%{http_code}",
                              "--config",

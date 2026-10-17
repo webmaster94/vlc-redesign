@@ -6,7 +6,7 @@ Unicode true
 !include x64.nsh
 
 !define PRODUCT "Reframe"
-!define VERSION "3.0.24-r5"
+!define VERSION "3.0.24-r6"
 !define REGKEY "Software\Reframe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Reframe"
 Name "${PRODUCT}"
@@ -17,8 +17,9 @@ RequestExecutionLevel admin
 ManifestDPIAware true
 SetCompressor /SOLID lzma
 SetOverwrite on
+SetDateSave on
 BrandingText "Reframe - unofficial VLC fork"
-VIProductVersion "3.0.24.5"
+VIProductVersion "3.0.24.6"
 VIAddVersionKey /LANG=1033 "ProductName" "Reframe"
 VIAddVersionKey /LANG=1033 "FileDescription" "Reframe media player setup"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"

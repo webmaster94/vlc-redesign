@@ -5,9 +5,23 @@ $ErrorActionPreference = 'Stop'
 $Artifacts = (Resolve-Path -LiteralPath $Artifacts).Path
 $testRoot = Join-Path $env:RUNNER_TEMP 'reframe-integration'
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
-$portableArchive = Join-Path $Artifacts 'Reframe-3.0.24-r5-win64-portable.zip'
+$portableArchive = Join-Path $Artifacts 'Reframe-3.0.24-r6-win64-portable.zip'
 Expand-Archive -LiteralPath $portableArchive -DestinationPath (Join-Path $testRoot 'portable')
 $app = Join-Path $testRoot 'portable\Reframe\reframe.exe'
+# This is deliberately the first player launch after extraction.
+$startupRoot = Join-Path $testRoot 'startup'
+python "$PSScriptRoot/tests/startup-performance.py" --app $app --output $startupRoot --ipc
+Get-ChildItem -LiteralPath $startupRoot -Filter '*.log' | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $Artifacts ('startup-' + $_.Name)) }
+if ($LASTEXITCODE -ne 0) { throw 'Startup/file-open performance regression' }
+Copy-Item -LiteralPath (Join-Path $startupRoot 'startup-results.json') -Destination $Artifacts
+$startupProfile = Join-Path $testRoot 'portable\Reframe\portable'
+$savedStartupProfile = Join-Path $startupRoot 'profile'
+$testBoundary = [IO.Path]::GetFullPath($testRoot).TrimEnd('\') + '\'
+foreach ($profilePath in @($startupProfile, $savedStartupProfile)) {
+    if (-not [IO.Path]::GetFullPath($profilePath).StartsWith($testBoundary, [StringComparison]::OrdinalIgnoreCase)) { throw 'Profile fixture must stay within the integration directory' }
+}
+Move-Item -LiteralPath $startupProfile -Destination $savedStartupProfile
+New-Item -ItemType Directory -Path $startupProfile | Out-Null
 # Exercise normal startup with a fresh portable profile, including the real consent dialog.
 foreach ($launch in 1..2) {
     $firstRunReport = Join-Path $testRoot "first-run-$launch.txt"
@@ -146,11 +160,20 @@ New-Item -Path "$classes\.mp4" -Force | Out-Null
 Set-Item -Path "$classes\.mp4" -Value 'VLC.mp4'
 
 $destination = Join-Path $testRoot 'installed'
-$setup = Join-Path $Artifacts 'Reframe-3.0.24-r5-win64.exe'
+$setup = Join-Path $Artifacts 'Reframe-3.0.24-r6-win64.exe'
 foreach ($pass in 1..2) {
     $install = Start-Process -FilePath $setup -ArgumentList @('/S',"/D=$destination") -Wait -PassThru -WindowStyle Hidden
     if ($install.ExitCode -ne 0) { throw "Installer failed on pass $pass" }
     if (-not (Test-Path -LiteralPath (Join-Path $destination 'reframe.exe'))) { throw 'Installer did not install the player' }
+    if (-not (Test-Path -LiteralPath (Join-Path $destination 'plugins\plugins.dat'))) { throw 'Installer omitted the native plugin cache' }
+    if ($pass -eq 1) {
+        New-Item -ItemType Directory -Path (Join-Path $destination 'portable') | Out-Null
+        $installedStartup = Join-Path $testRoot 'startup-installed'
+        python "$PSScriptRoot/tests/startup-performance.py" --app (Join-Path $destination 'reframe.exe') --output $installedStartup
+        Get-ChildItem -LiteralPath $installedStartup -Filter '*.log' | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $Artifacts ('startup-installed-' + $_.Name)) }
+        if ($LASTEXITCODE -ne 0) { throw 'Installed-player startup performance regression' }
+        Copy-Item -LiteralPath (Join-Path $installedStartup 'startup-results.json') -Destination (Join-Path $Artifacts 'startup-installed-results.json')
+    }
     if ((Get-ItemProperty 'HKLM:\Software\VideoLAN\VLC').InstallDir -ne $stock) { throw 'Stock VLC registration changed' }
     if ((Get-Item "$classes\.mp4").GetValue('') -ne 'VLC.mp4') { throw 'Existing association changed' }
     Set-Content -LiteralPath (Join-Path $destination 'user-file.txt') -Value 'user data must survive'

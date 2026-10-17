@@ -45,6 +45,7 @@ def main():
     rows = [inspect("installer", installer.read_bytes())]
     assert rows[0]["DEP"], "installer missing DEP"
     with zipfile.ZipFile(portable) as archive:
+        assert archive.getinfo("Reframe/plugins/plugins.dat").file_size > 1000, "missing native plugin cache"
         seen = set()
         for info in archive.infolist():
             name = info.filename

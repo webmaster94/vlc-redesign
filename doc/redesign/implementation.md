@@ -46,6 +46,14 @@ OpenSubtitles is implemented against the official current REST contract. Publish
 
 The `master` branch is a development version and has a different interface architecture. Starting from a stable tag avoids making the installable fork depend on unreleased VLC changes. This choice can be revisited if the design requires library capabilities absent from 3.0.
 
+## Startup performance
+
+The r5 packages omitted `plugins/plugins.dat`. A local isolated r5 launch took 36.86 seconds to open a generated WAV and exit; the following launch took 0.60 seconds. With a generated cache, a fresh-path engine probe reached playback progress in 9.26 seconds, and the first GUI file-open/exit probe took 3.80 seconds. The engine probe observed 360 loaded plugin DLLs without the cache and 46 with it on repeat runs. These observations include Windows caching and file-scanning effects; they are not measurements of a freshly rebooted machine.
+
+The r6 build generates the native cache on Windows after stripping and staging DLLs, then embeds it in both packages. The installer copies the cache as data and never executes a plugin scanner with its elevated token. Plugin timestamp/size validation and discovery of additional plugins remain enabled. ZIP entries include UTC NTFS and extended timestamps; an extractor that discards timestamps can still force VLC to rescan plugins.
+
+`tests/startup-performance.py` measures from process launch to positive playback progress in the visible Qt window. It checks first launch, repeat launch and a second file passed through the actual single-instance path. Separate checks cover the installed copy. Fixtures use dummy audio output to avoid device-dependent timing, and each path has a 15-second limit. This limit is a regression check for local fixtures, not a promise about every media file, device or network stream.
+
 ## Windows build
 
 Use VideoLAN's [existing Windows build script](../../extras/package/win32/build.sh) and its [CI configuration](../../extras/ci/gitlab-ci.yml). The build validation workflow uses the exact dated image and dependency revision selected by the 3.0.24 source tree:

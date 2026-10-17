@@ -268,6 +268,10 @@ vlc_module_begin ()
     add_string( "qt-redesign-preview", "", "Save a Reframe preview and exit",
                 "PNG path for verifying this application's rendered window", true )
         change_volatile()
+    add_string( "qt-redesign-startup-probe", "", "Record first playback progress for startup tests",
+                "Used only by the isolated startup performance checks.", true )
+        change_volatile()
+        change_private()
     add_string( "qt-redesign-smoke", "", "Reframe integration test report",
                 "Opt-in widget and playback integration checks", true )
         change_volatile()

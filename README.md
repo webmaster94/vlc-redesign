@@ -6,6 +6,8 @@ The player includes live Playback, Video, Audio and Subtitles panels; direct tra
 
 Windows x64 installers and portable builds are published in [Releases](https://github.com/webmaster94/vlc-redesign/releases). The installer is unsigned. Reframe is not an official VideoLAN release.
 
+Release packages include VLC's native plugin index so opening a file does not require loading every playback plugin. Startup checks time first playback, repeat launches and opening a file in an existing instance, with a 15-second limit for each generated local fixture.
+
 ## Build and verification
 
 Development is on `redesign`, starting from upstream commit `6de05adcbaf2e8b85fe86aad4169393098628119`. The [Windows build workflow](.github/workflows/redesign-build.yml) uses VideoLAN's dated build image and matching dependency revision. It produces an NSIS installer, a portable player, corresponding fork and dependency source, notices and SHA-256 checksums.

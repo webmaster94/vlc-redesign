@@ -1342,10 +1342,12 @@ void RedesignShell::startFirstRun()
         getSettings()->setValue("Redesign/onboarded", false);
     free(firstRunSmoke);
     char *preview = var_InheritString(p_intf, "qt-redesign-preview"),
-         *smoke = var_InheritString(p_intf, "qt-redesign-smoke");
-    const bool diagnostic = (preview && *preview) || (smoke && *smoke);
+         *smoke = var_InheritString(p_intf, "qt-redesign-smoke"),
+         *startupProbe = var_InheritString(p_intf, "qt-redesign-startup-probe");
+    const bool diagnostic = (preview && *preview) || (smoke && *smoke) || (startupProbe && *startupProbe);
     free(preview);
     free(smoke);
+    free(startupProbe);
     if (diagnostic)
         return;
     auto ready = [this]
@@ -2419,7 +2421,7 @@ void RedesignShell::checkUpdates()
                     const auto tag = data.value("tag_name").toString();
                     if (QRegularExpression("^v[0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}$").match(tag).hasMatch() &&
                         QVersionNumber::compare(QVersionNumber::fromString(tag.mid(1)),
-                                                QVersionNumber(0, 5, 0)) > 0 &&
+                                                QVersionNumber(0, 6, 0)) > 0 &&
                         tag != getSettings()->value("Redesign/lastRelease").toString())
                     {
                         getSettings()->setValue("Redesign/lastRelease", tag);
